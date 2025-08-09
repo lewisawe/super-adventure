@@ -795,15 +795,42 @@ class PlantsVsZombiesEngine {
                     }
                 }
             } else {
-                // Move towards house using GLACIAL PACE speed
-                // Ultra ultra slow - barely perceptible movement!
-                const GLACIAL_PACE_SPEED = 0.1; // 0.1 pixels per second - like watching paint dry!
+                // Move towards house using GLACIAL PACE speeds based on zombie type
+                // Base speed: 0.1 pixels/second - ultra slow reference
+                let zombieSpeed;
+                
+                switch (zombie.type) {
+                    case '🧟': // Basic Zombie - baseline
+                        zombieSpeed = 0.1; // Standard glacial pace
+                        break;
+                    case '🧟‍♂️': // Conehead - slower due to cone weight
+                        zombieSpeed = 0.08; // 20% slower than basic
+                        break;
+                    case '🧟‍♀️': // Buckethead - very slow due to heavy bucket
+                        zombieSpeed = 0.05; // 50% slower than basic
+                        break;
+                    case '🏃‍♂️': // Runner - "fast" but still glacial
+                        zombieSpeed = 0.2; // 2x basic (still super slow!)
+                        break;
+                    case '🦘': // Pole Vaulter - slightly faster
+                        zombieSpeed = 0.15; // 1.5x basic
+                        break;
+                    case '🎈': // Balloon - floats slowly
+                        zombieSpeed = 0.12; // Slightly faster than basic
+                        break;
+                    case '👑': // Boss - intimidating but slow
+                        zombieSpeed = 0.06; // Slower due to massive size
+                        break;
+                    default:
+                        zombieSpeed = 0.1; // Default to basic zombie speed
+                }
+                
                 const oldX = zombie.x;
-                zombie.x -= GLACIAL_PACE_SPEED * deltaTime;
+                zombie.x -= zombieSpeed * deltaTime;
                 
                 // Debug: Log speed override (only occasionally to avoid spam)
                 if (Math.random() < 0.001) { // 0.1% chance to log
-                    console.log(`🧊 Zombie at glacial pace: ${oldX.toFixed(3)} → ${zombie.x.toFixed(3)} (speed: ${GLACIAL_PACE_SPEED} px/s, config was: ${zombie.speed})`);
+                    console.log(`🧊 ${zombie.type} at glacial pace: ${oldX.toFixed(3)} → ${zombie.x.toFixed(3)} (speed: ${zombieSpeed} px/s, type: ${zombie.name || zombie.type})`);
                 }
                 zombie.col = Math.floor(zombie.x);
                 
