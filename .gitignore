@@ -137,3 +137,75 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+# ==========================================
+# PROJECT-SPECIFIC IGNORES
+# ==========================================
+
+# Server Logs
+server.log
+
+# Test and Debug Files
+test-*.js
+debug-*.js
+*-test.js
+*-debug.js
+test/
+tests/
+__tests__/
+
+# Development and Temporary Files
+sync-*.js
+reload-*.js
+restart-*.js
+fix-*.js
+temp-*.js
+tmp-*.js
+
+# Patch Files
+*.patch
+*.diff
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Redis Data Files (if any)
+dump.rdb
+*.rdb
+
+# Backup Files
+*.bak
+*.backup
+*.old
+*~
+
+# Documentation Build Files
+docs/build/
+docs/_build/
+
+# Local Configuration Files
+config/local.js
+config/development.js
+config/production.js
+.env.local
+.env.development
+.env.production
+
+# Game Data (if you don't want to track game saves)
+saves/
+game-data/
+user-data/
