@@ -795,9 +795,16 @@ class PlantsVsZombiesEngine {
                     }
                 }
             } else {
-                // Move towards house using time-based movement
-                // Speed is in pixels per second, so multiply by deltaTime
-                zombie.x -= zombie.speed * deltaTime;
+                // Move towards house using GLACIAL PACE speed
+                // Ultra ultra slow - barely perceptible movement!
+                const GLACIAL_PACE_SPEED = 0.1; // 0.1 pixels per second - like watching paint dry!
+                const oldX = zombie.x;
+                zombie.x -= GLACIAL_PACE_SPEED * deltaTime;
+                
+                // Debug: Log speed override (only occasionally to avoid spam)
+                if (Math.random() < 0.001) { // 0.1% chance to log
+                    console.log(`🧊 Zombie at glacial pace: ${oldX.toFixed(3)} → ${zombie.x.toFixed(3)} (speed: ${GLACIAL_PACE_SPEED} px/s, config was: ${zombie.speed})`);
+                }
                 zombie.col = Math.floor(zombie.x);
                 
                 // Check if zombie reached the house
