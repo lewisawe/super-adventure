@@ -95,6 +95,9 @@ body {
     color: white;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     border-bottom: 3px solid #006400;
+    gap: 20px;
+    flex-wrap: wrap;
+    min-height: 80px;
 }
 
 .logo h1 {
@@ -114,6 +117,128 @@ body {
 @keyframes logoGlow {
     0% { text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5); }
     100% { text-shadow: 3px 3px 6px rgba(255, 215, 0, 0.8); }
+}
+
+/* Navigation Controls */
+.nav-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.nav-btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 25px;
+    font-family: 'Fredoka One', cursive;
+    font-size: 1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(5px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    min-width: 120px;
+}
+
+.nav-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.nav-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.start-btn {
+    background: linear-gradient(135deg, #32CD32 0%, #228B22 100%);
+    color: white;
+    animation: startBtnPulse 2s ease-in-out infinite;
+}
+
+.start-btn:hover {
+    background: linear-gradient(135deg, #3CB371 0%, #2E8B57 100%);
+    animation: none;
+}
+
+.pause-btn {
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+    color: #8B4513;
+}
+
+.pause-btn:hover {
+    background: linear-gradient(135deg, #FFED4E 0%, #FFB84D 100%);
+}
+
+@keyframes startBtnPulse {
+    0%, 100% { 
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2), 0 0 0 0 rgba(50, 205, 50, 0.4);
+    }
+    50% { 
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), 0 0 0 10px rgba(50, 205, 50, 0);
+    }
+}
+
+.nav-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.nav-btn:disabled:hover {
+    transform: none;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Responsive header layout */
+@media (max-width: 1200px) {
+    .game-header {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 15px;
+        padding: 15px 20px;
+    }
+    
+    .logo {
+        order: 1;
+        flex: 1 1 auto;
+        text-align: center;
+    }
+    
+    .nav-controls {
+        order: 2;
+        flex: 0 0 auto;
+    }
+    
+    .game-stats {
+        order: 3;
+        flex: 1 1 auto;
+        justify-content: center;
+        gap: 20px;
+    }
+    
+    .player-info {
+        order: 4;
+        flex: 0 0 auto;
+        align-items: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .nav-btn {
+        padding: 10px 15px;
+        font-size: 0.9em;
+        min-width: 100px;
+    }
+    
+    .game-stats {
+        gap: 15px;
+    }
+    
+    .stat-item {
+        padding: 6px 12px;
+    }
 }
 
 .game-stats {
