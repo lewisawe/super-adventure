@@ -17,8 +17,8 @@ This project demonstrates Redis as a **powerful, multi-model platform** rather t
 
 ### 📡 **Real-time Pub/Sub**
 - Live multiplayer game updates (plant placements, zombie movements)
-- Chat system with zero polling
 - Wave notifications and game events
+- Real-time player status updates
 
 ### 📊 **Streams for Event Sourcing**
 - Complete game replay capability

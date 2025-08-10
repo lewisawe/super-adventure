@@ -34,6 +34,11 @@ class WaveManager {
     }
 
     update() {
+        // Don't update if paused
+        if (this.isPaused) {
+            return;
+        }
+        
         if (this.waveEvents.length === 0) return;
 
         const now = Date.now();
@@ -151,6 +156,27 @@ class WaveManager {
 
     getCurrentWave() {
         return GAME_CONFIG.WAVES[this.currentWaveIndex];
+    }
+
+    pause() {
+        this.isPaused = true;
+        this.pausedAt = Date.now();
+    }
+
+    resume(pauseDuration) {
+        this.isPaused = false;
+        
+        // Adjust timing for pause duration
+        if (this.waveStartTime) {
+            this.waveStartTime += pauseDuration;
+        }
+        
+        // Adjust horde timing if active
+        if (this.hordeActive && this.hordeEndTime) {
+            this.hordeEndTime += pauseDuration;
+        }
+        
+        delete this.pausedAt;
     }
 }
 
@@ -386,6 +412,100 @@ class PlantsVsZombiesEngine {
         return gameState;
     }
 
+    async pauseGame(gameId, playerId) {
+        const gameState = this.games.get(gameId);
+        if (!gameState) {
+            return { success: false, message: 'Game not found' };
+        }
+
+        // Check if player is in the game
+        const player = gameState.players[playerId];
+        if (!player) {
+            return { success: false, message: 'Player not in game' };
+        }
+
+        if (gameState.status !== 'playing') {
+            return { success: false, message: 'Game is not currently playing' };
+        }
+
+        // Pause the game
+        gameState.status = 'paused';
+        gameState.pausedAt = Date.now();
+        gameState.pausedBy = playerId;
+
+        // Store the remaining time for current wave if in progress
+        if (gameState.waveInProgress && gameState.waveStartTime) {
+            gameState.pausedWaveElapsed = Date.now() - gameState.waveStartTime;
+        }
+
+        // Store remaining time until next wave
+        if (gameState.nextWaveTime) {
+            gameState.pausedNextWaveRemaining = Math.max(0, gameState.nextWaveTime - Date.now());
+        }
+
+        // Pause the wave manager
+        const waveManager = this.waveManagers.get(gameId);
+        if (waveManager) {
+            waveManager.pause();
+        }
+
+        await this.redis.saveGameState(gameId, gameState);
+
+        console.log(`⏸️ Game ${gameId} paused by ${playerId}`);
+        return { success: true, gameState };
+    }
+
+    async resumeGame(gameId, playerId) {
+        const gameState = this.games.get(gameId);
+        if (!gameState) {
+            return { success: false, message: 'Game not found' };
+        }
+
+        // Check if player is in the game
+        const player = gameState.players[playerId];
+        if (!player) {
+            return { success: false, message: 'Player not in game' };
+        }
+
+        if (gameState.status !== 'paused') {
+            return { success: false, message: 'Game is not currently paused' };
+        }
+
+        // Resume the game
+        const now = Date.now();
+        const pauseDuration = now - gameState.pausedAt;
+        
+        gameState.status = 'playing';
+        gameState.resumedAt = now;
+        gameState.resumedBy = playerId;
+
+        // Adjust wave timing
+        if (gameState.waveInProgress && gameState.pausedWaveElapsed !== undefined) {
+            gameState.waveStartTime = now - gameState.pausedWaveElapsed;
+        }
+
+        if (gameState.pausedNextWaveRemaining !== undefined) {
+            gameState.nextWaveTime = now + gameState.pausedNextWaveRemaining;
+        }
+
+        // Resume the wave manager
+        const waveManager = this.waveManagers.get(gameId);
+        if (waveManager) {
+            waveManager.resume(pauseDuration);
+        }
+
+        // Clean up pause-related fields
+        delete gameState.pausedAt;
+        delete gameState.pausedBy;
+        delete gameState.pausedWaveElapsed;
+        delete gameState.pausedNextWaveRemaining;
+
+        await this.redis.saveGameState(gameId, gameState);
+
+        console.log(`▶️ Game ${gameId} resumed by ${playerId} (paused for ${pauseDuration}ms)`);
+        return { success: true, gameState };
+    }
+
     // ==========================================
     // BOARD INITIALIZATION
     // ==========================================
@@ -544,7 +664,7 @@ class PlantsVsZombiesEngine {
         // If game is not in memory, try to reload it from Redis
         if (!gameState) {
             gameState = await this.redis.getGameState(gameId);
-            if (gameState && gameState.status === 'playing') {
+            if (gameState && (gameState.status === 'playing' || gameState.status === 'paused')) {
                 console.log(`🔄 Reloading game ${gameId} into memory`);
                 this.games.set(gameId, gameState);
                 
@@ -552,12 +672,23 @@ class PlantsVsZombiesEngine {
                 if (gameState.waveInProgress && gameState.currentWave > 0) {
                     const waveManager = new WaveManager(this, gameState);
                     waveManager.startWave(gameState.currentWave - 1);
+                    
+                    // If game was paused, pause the wave manager too
+                    if (gameState.status === 'paused') {
+                        waveManager.pause();
+                    }
+                    
                     this.waveManagers.set(gameId, waveManager);
                 }
             }
         }
         
-        if (!gameState || gameState.status !== 'playing') {
+        if (!gameState || (gameState.status !== 'playing' && gameState.status !== 'paused')) {
+            return;
+        }
+
+        // Skip updates if game is paused (but keep the game in memory)
+        if (gameState.status === 'paused') {
             return;
         }
 

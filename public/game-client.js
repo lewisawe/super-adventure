@@ -23,10 +23,7 @@ class PlantsVsZombiesClient {
             loadingScreen: document.getElementById('loadingScreen'),
             gameOverScreen: document.getElementById('gameOverScreen'),
             leaderboardModal: document.getElementById('leaderboardModal'),
-            notificationsContainer: document.getElementById('notifications'),
-            chatContainer: document.querySelector('.chat-container'),
-            chatMessages: document.getElementById('chatMessages'),
-            chatInput: document.getElementById('chatInput')
+            notificationsContainer: document.getElementById('notifications')
         };
         
         // Game configuration
@@ -156,11 +153,17 @@ class PlantsVsZombiesClient {
             this.handlePowerupUsed(data);
         });
         
-        // Chat events
-        this.socket.on('chat_message', (data) => {
-            this.handleChatMessage(data);
+        // Game pause/resume events
+        this.socket.on('game_paused', (data) => {
+            console.log('⏸️ Game paused:', data);
+            this.handleGamePaused(data);
         });
-        
+
+        this.socket.on('game_resumed', (data) => {
+            console.log('▶️ Game resumed:', data);
+            this.handleGameResumed(data);
+        });
+
         // Error handling
         this.socket.on('error', (data) => {
             console.error('❌ Server error:', data);
@@ -221,21 +224,6 @@ class PlantsVsZombiesClient {
             card.addEventListener('click', () => {
                 this.usePowerup(card.dataset.powerup);
             });
-        });
-        
-        // Chat system
-        document.getElementById('sendChat').addEventListener('click', () => {
-            this.sendChatMessage();
-        });
-        
-        document.getElementById('chatInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.sendChatMessage();
-            }
-        });
-        
-        document.getElementById('toggleChat').addEventListener('click', () => {
-            this.toggleChat();
         });
         
         // Game over actions
@@ -377,8 +365,18 @@ class PlantsVsZombiesClient {
     }
 
     pauseGame() {
-        // TODO: Implement pause functionality
-        this.showNotification('Pause feature coming soon!', 'info');
+        if (!this.gameStarted) {
+            this.showNotification('Game not started yet', 'warning');
+            return;
+        }
+
+        if (this.gameState && this.gameState.status === 'paused') {
+            // Resume game
+            this.socket.emit('resume_game');
+        } else {
+            // Pause game
+            this.socket.emit('pause_game');
+        }
     }
 
     selectPlant(plantType, cost) {
@@ -513,24 +511,6 @@ class PlantsVsZombiesClient {
         });
     }
 
-    sendChatMessage() {
-        const input = this.elements.chatInput;
-        const message = input.value.trim();
-        
-        if (!message) return;
-        
-        if (message.length > 100) {
-            this.showNotification('Message too long (max 100 characters)', 'warning');
-            return;
-        }
-        
-        this.socket.emit('chat_message', {
-            message: message
-        });
-        
-        input.value = '';
-    }
-
     // ==========================================
     // EVENT HANDLERS
     // ==========================================
@@ -560,6 +540,7 @@ class PlantsVsZombiesClient {
         // Update UI
         document.getElementById('startGameBtn').style.display = 'none';
         document.getElementById('pauseGameBtn').style.display = 'block';
+        this.updatePauseButton();
         
         this.updateGameStats();
         this.showNotification(data.message || 'Game started!', 'success');
@@ -677,8 +658,75 @@ class PlantsVsZombiesClient {
         this.showNotification(`${this.getPowerupName(data.powerupType)} activated!`, 'success');
     }
 
-    handleChatMessage(data) {
-        this.addChatMessage(data.playerId, data.message, data.timestamp);
+    handleGamePaused(data) {
+        this.gameState = data.gameState;
+        this.updatePauseButton();
+        this.showNotification(data.message, 'info');
+        
+        // Stop animations
+        this.stopGameLoop();
+        
+        // Show pause overlay
+        this.showPauseOverlay();
+    }
+
+    handleGameResumed(data) {
+        this.gameState = data.gameState;
+        this.updatePauseButton();
+        this.showNotification(data.message, 'success');
+        
+        // Hide pause overlay
+        this.hidePauseOverlay();
+        
+        // Resume animations
+        this.startGameLoop();
+    }
+
+    updatePauseButton() {
+        const pauseBtn = document.getElementById('pauseGameBtn');
+        if (!pauseBtn) return;
+
+        if (this.gameState && this.gameState.status === 'paused') {
+            pauseBtn.innerHTML = '▶️ Resume';
+            pauseBtn.classList.add('resume-btn');
+            pauseBtn.classList.remove('pause-btn');
+        } else {
+            pauseBtn.innerHTML = '⏸️ Pause';
+            pauseBtn.classList.add('pause-btn');
+            pauseBtn.classList.remove('resume-btn');
+        }
+    }
+
+    showPauseOverlay() {
+        // Create pause overlay if it doesn't exist
+        let overlay = document.getElementById('pauseOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'pauseOverlay';
+            overlay.className = 'pause-overlay';
+            overlay.innerHTML = `
+                <div class="pause-content">
+                    <h2>⏸️ Game Paused</h2>
+                    <p>Click Resume to continue playing</p>
+                    <button id="resumeFromOverlay" class="nav-btn resume-btn">▶️ Resume Game</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            // Add event listener for resume button in overlay
+            document.getElementById('resumeFromOverlay').addEventListener('click', () => {
+                this.pauseGame(); // This will resume since game is paused
+            });
+        }
+        
+        overlay.style.display = 'flex';
+    }
+
+    hidePauseOverlay() {
+        const overlay = document.getElementById('pauseOverlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
     }
 
     // ==========================================
@@ -1133,11 +1181,6 @@ class PlantsVsZombiesClient {
             }
         }
         
-        // Chat shortcut (Enter)
-        if (e.key === 'Enter' && !e.target.matches('input')) {
-            this.elements.chatInput.focus();
-        }
-        
         // Escape to deselect
         if (e.key === 'Escape') {
             this.selectedPlant = null;
@@ -1205,44 +1248,6 @@ class PlantsVsZombiesClient {
         } else {
             document.body.style.cursor = 'default';
         }
-    }
-
-    // ==========================================
-    // CHAT SYSTEM
-    // ==========================================
-
-    addChatMessage(playerId, message, timestamp) {
-        const chatMessages = this.elements.chatMessages;
-        
-        const messageElement = document.createElement('div');
-        messageElement.className = 'chat-message';
-        
-        const time = new Date(timestamp).toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-        });
-        
-        messageElement.innerHTML = `
-            <span class="sender">${playerId}:</span>
-            ${this.escapeHtml(message)}
-            <span class="timestamp">${time}</span>
-        `;
-        
-        chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-        
-        // Limit chat history
-        while (chatMessages.children.length > 50) {
-            chatMessages.removeChild(chatMessages.firstChild);
-        }
-    }
-
-    toggleChat() {
-        const chatContainer = this.elements.chatContainer;
-        const toggleBtn = document.getElementById('toggleChat');
-        
-        chatContainer.classList.toggle('minimized');
-        toggleBtn.textContent = chatContainer.classList.contains('minimized') ? '+' : '−';
     }
 
     // ==========================================

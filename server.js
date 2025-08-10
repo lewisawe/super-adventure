@@ -236,6 +236,58 @@ class PlantsVsZombiesServer {
                 }
             });
 
+            // Pause game
+            socket.on('pause_game', async () => {
+                try {
+                    const player = this.connectedPlayers.get(socket.id);
+                    if (!player) {
+                        socket.emit('error', { message: 'Player not found' });
+                        return;
+                    }
+
+                    const result = await this.gameEngine.pauseGame(player.gameId, player.playerId);
+                    if (result.success) {
+                        this.io.to(player.gameId).emit('game_paused', {
+                            gameState: result.gameState,
+                            pausedBy: player.playerId,
+                            message: `Game paused by ${player.playerId}`
+                        });
+                        console.log(`⏸️ Game paused: ${player.gameId} by ${player.playerId}`);
+                    } else {
+                        socket.emit('error', { message: result.message });
+                    }
+                } catch (error) {
+                    console.error('Pause game error:', error);
+                    socket.emit('error', { message: error.message });
+                }
+            });
+
+            // Resume game
+            socket.on('resume_game', async () => {
+                try {
+                    const player = this.connectedPlayers.get(socket.id);
+                    if (!player) {
+                        socket.emit('error', { message: 'Player not found' });
+                        return;
+                    }
+
+                    const result = await this.gameEngine.resumeGame(player.gameId, player.playerId);
+                    if (result.success) {
+                        this.io.to(player.gameId).emit('game_resumed', {
+                            gameState: result.gameState,
+                            resumedBy: player.playerId,
+                            message: `Game resumed by ${player.playerId}`
+                        });
+                        console.log(`▶️ Game resumed: ${player.gameId} by ${player.playerId}`);
+                    } else {
+                        socket.emit('error', { message: result.message });
+                    }
+                } catch (error) {
+                    console.error('Resume game error:', error);
+                    socket.emit('error', { message: error.message });
+                }
+            });
+
             // Plant placement
             socket.on('place_plant', async (data) => {
                 try {
@@ -304,31 +356,6 @@ class PlantsVsZombiesServer {
                 }
             });
 
-            // Chat message
-            socket.on('chat_message', async (data) => {
-                try {
-                    const { message } = data;
-                    const player = this.connectedPlayers.get(socket.id);
-                    
-                    if (!player || !message || message.trim().length === 0) {
-                        return;
-                    }
-
-                    const chatData = {
-                        playerId: player.playerId,
-                        message: message.trim(),
-                        timestamp: Date.now()
-                    };
-
-                    this.io.to(player.gameId).emit('chat_message', chatData);
-                    
-                    await this.redis.addGameEvent(player.gameId, 'chat_message', chatData);
-
-                } catch (error) {
-                    console.error('Chat message error:', error);
-                }
-            });
-
             // Player disconnect
             socket.on('disconnect', async () => {
                 try {
@@ -347,7 +374,7 @@ class PlantsVsZombiesServer {
         });
     }
 
-    async start(port = 3001) {
+    async start(port = process.env.PORT || 3001) {
         try {
             // Connect to Redis
             const connected = await this.redis.connect();
