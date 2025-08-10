@@ -223,6 +223,50 @@ class AudioManager {
         return buffer;
     }
 
+    async generateZombieGroan() {
+        const sampleRate = this.audioContext.sampleRate;
+        const duration = 1.2;
+        const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+            const envelope = Math.exp(-t * 2) * (1 - Math.exp(-t * 10));
+            
+            // Low frequency groan with harmonics
+            const fundamental = Math.sin(t * 80 * Math.PI * 2);
+            const harmonic1 = Math.sin(t * 120 * Math.PI * 2) * 0.5;
+            const harmonic2 = Math.sin(t * 160 * Math.PI * 2) * 0.3;
+            const noise = (Math.random() * 2 - 1) * 0.1;
+            
+            data[i] = (fundamental + harmonic1 + harmonic2 + noise) * envelope * 0.4;
+        }
+
+        return buffer;
+    }
+
+    async generateLawnMower() {
+        const sampleRate = this.audioContext.sampleRate;
+        const duration = 2.0;
+        const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+            const envelope = Math.min(1, t * 5) * Math.max(0, 1 - (t - 1.5) * 2);
+            
+            // Engine sound with varying RPM
+            const rpm = 1200 + Math.sin(t * 3) * 200;
+            const engine = Math.sin(t * rpm * Math.PI * 2 / 60);
+            const engine2 = Math.sin(t * rpm * Math.PI * 4 / 60) * 0.3;
+            const noise = (Math.random() * 2 - 1) * 0.2;
+            
+            data[i] = (engine + engine2 + noise) * envelope * 0.5;
+        }
+
+        return buffer;
+    }
+
     playSound(soundName, volume = 1.0) {
         if (!this.isInitialized || !this.soundBuffers.has(soundName)) {
             return;

@@ -63,9 +63,22 @@ class PlantsVsZombiesClient {
             // Load initial stats
             await this.loadInitialStats();
             
-            // Hide loading screen and show login
+            // Check initial state of inputs and clear game ID
+            const playerNameInput = document.getElementById('playerNameInput');
+            const gameIdInput = document.getElementById('gameIdInput');
+            console.log('🔍 Initial input states:');
+            console.log('  - Player name:', `"${playerNameInput.value}"`);
+            console.log('  - Game ID:', `"${gameIdInput.value}"`);
+            
+            // Always clear game ID on page load to prevent pre-filling issues
+            if (gameIdInput.value) {
+                console.log('🧹 Clearing pre-filled game ID:', gameIdInput.value);
+                gameIdInput.value = '';
+            }
+            
+            // Hide loading screen and show main menu
             this.hideLoadingScreen();
-            this.showLoginScreen();
+            this.showMainMenu();
             
             console.log('✅ Client initialization complete');
             
@@ -219,7 +232,50 @@ class PlantsVsZombiesClient {
     // ==========================================
 
     setupEventListeners() {
-        // Login form
+        // Main Menu buttons
+        document.getElementById('startNewGameBtn').addEventListener('click', () => {
+            this.showNewGameScreen();
+        });
+        
+        document.getElementById('resumeGameMenuBtn').addEventListener('click', () => {
+            this.showResumeGameScreen();
+        });
+        
+        document.getElementById('leaderboardMenuBtn').addEventListener('click', () => {
+            // TODO: Implement leaderboard screen
+            this.showNotification('Leaderboard coming soon!', 'info');
+        });
+        
+        // New Game Screen
+        document.getElementById('createNewGameBtn').addEventListener('click', () => {
+            this.createNewGame();
+        });
+        
+        document.getElementById('backToMainMenuBtn').addEventListener('click', () => {
+            this.showMainMenu();
+        });
+        
+        document.getElementById('newPlayerNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.createNewGame();
+            }
+        });
+        
+        // Resume Game Screen
+        document.getElementById('backToMainFromResumeBtn').addEventListener('click', () => {
+            this.showMainMenu();
+        });
+        
+        document.getElementById('resumePlayerNameInput').addEventListener('input', (e) => {
+            const playerName = e.target.value.trim();
+            if (playerName.length >= 2) {
+                this.loadSavedGames(playerName);
+            } else {
+                this.hideSavedGames();
+            }
+        });
+
+        // Login form (legacy)
         document.getElementById('joinGameBtn').addEventListener('click', () => {
             this.joinGame();
         });
@@ -314,6 +370,12 @@ class PlantsVsZombiesClient {
             const playerName = e.target.value.trim();
             console.log('📝 Player name input changed:', playerName);
             
+            // Clear any previous game ID to ensure fresh start for new games
+            const gameIdInput = document.getElementById('gameIdInput');
+            const oldGameId = gameIdInput.value;
+            gameIdInput.value = '';
+            console.log('🧹 Cleared game ID:', oldGameId, '→', gameIdInput.value);
+            
             // Clear previous timeout
             if (inputTimeout) {
                 clearTimeout(inputTimeout);
@@ -407,6 +469,8 @@ class PlantsVsZombiesClient {
         const playerName = document.getElementById('playerNameInput').value.trim();
         const gameId = document.getElementById('gameIdInput').value.trim();
         const gameMode = document.querySelector('input[name="gameMode"]:checked').value;
+        
+        console.log('🎯 joinGame called with:', { playerName, gameId, gameMode });
         
         if (!playerName) {
             this.showNotification('Please enter your name', 'warning');
@@ -1566,6 +1630,40 @@ class PlantsVsZombiesClient {
         this.elements.loginScreen.style.display = 'none';
     }
 
+    showMainMenu() {
+        this.hideAllScreens();
+        document.getElementById('mainMenuScreen').style.display = 'block';
+    }
+
+    showNewGameScreen() {
+        this.hideAllScreens();
+        document.getElementById('newGameScreen').style.display = 'block';
+        // Clear and focus the player name input
+        const nameInput = document.getElementById('newPlayerNameInput');
+        nameInput.value = '';
+        nameInput.focus();
+    }
+
+    showResumeGameScreen() {
+        this.hideAllScreens();
+        document.getElementById('resumeGameScreen').style.display = 'block';
+        // Clear and focus the player name input
+        const nameInput = document.getElementById('resumePlayerNameInput');
+        nameInput.value = '';
+        nameInput.focus();
+        // Hide saved games initially
+        document.getElementById('savedGamesList').style.display = 'none';
+        document.getElementById('noSavedGamesMessage').style.display = 'none';
+    }
+
+    hideAllScreens() {
+        const screens = ['mainMenuScreen', 'newGameScreen', 'resumeGameScreen', 'loginScreen', 'gameContainer', 'gameOverScreen'];
+        screens.forEach(screenId => {
+            const screen = document.getElementById(screenId);
+            if (screen) screen.style.display = 'none';
+        });
+    }
+
     showGameContainer() {
         this.elements.gameContainer.style.display = 'flex';
     }
@@ -1681,15 +1779,34 @@ class PlantsVsZombiesClient {
     async loadPlayerActiveGames(playerName) {
         try {
             console.log('🔍 Loading active games for player:', playerName);
+            
+            // Show loading state
+            const resumeBtn = document.getElementById('resumeGameBtn');
+            const originalText = resumeBtn.textContent;
+            resumeBtn.textContent = '🔄 Loading games...';
+            resumeBtn.disabled = true;
+            
             const response = await fetch(`/api/player/${encodeURIComponent(playerName)}/games`);
             const games = await response.json();
             
             console.log('📋 Found games:', games);
+            
+            // Restore button state
+            resumeBtn.textContent = originalText;
+            resumeBtn.disabled = false;
+            
             this.displayActiveGames(games);
             
         } catch (error) {
             console.error('❌ Failed to load player games:', error);
+            
+            // Restore button state
+            const resumeBtn = document.getElementById('resumeGameBtn');
+            resumeBtn.textContent = '🎮 Continue Playing';
+            resumeBtn.disabled = false;
+            
             this.hideActiveGames();
+            this.showNotification('Failed to load saved games', 'error');
         }
     }
 
@@ -1700,8 +1817,22 @@ class PlantsVsZombiesClient {
         const container = document.getElementById('activeGamesContainer');
         
         if (games.length === 0) {
-            console.log('❌ No games found, hiding resume functionality');
-            this.hideActiveGames();
+            console.log('❌ No games found, showing helpful message');
+            
+            // Show the list but with a helpful message
+            resumeBtn.style.display = 'block';
+            activeGamesList.style.display = 'block';
+            
+            container.innerHTML = `
+                <div class="no-games-message">
+                    <div class="no-games-icon">🎮</div>
+                    <h4>No saved games found</h4>
+                    <p>Start a new game to begin your zombie defense adventure!</p>
+                    <div class="no-games-tips">
+                        <p><strong>💡 Tip:</strong> Games are automatically saved when you pause or leave</p>
+                    </div>
+                </div>
+            `;
             return;
         }
         
@@ -1714,28 +1845,57 @@ class PlantsVsZombiesClient {
         // Clear existing games
         container.innerHTML = '';
         
-        // Add each game
-        games.forEach(game => {
+        // Add each game with enhanced information
+        games.forEach((game, index) => {
             console.log('🎯 Adding game card for:', game.gameId);
             const gameItem = document.createElement('div');
             gameItem.className = 'active-game-item';
             gameItem.dataset.gameId = game.gameId;
             
-            const timeSince = this.formatTimeSince(game.lastActivity);
+            // Create a friendly game name
+            const gameDate = new Date(game.createdAt);
+            const gameName = this.generateGameName(game, gameDate);
+            const timeAgo = this.formatTimeSince(game.lastActivity);
+            const statusIcon = this.getStatusIcon(game.status);
+            const modeIcon = this.getModeIcon(game.mode);
             
             gameItem.innerHTML = `
-                <div class="active-game-info">
-                    <div class="active-game-id">Game: ${game.gameId.substring(0, 8)}...</div>
-                    <div class="active-game-details">
-                        <span>🎮 ${game.mode}</span>
-                        <span>👥 ${game.players} players</span>
-                        <span>🌊 Wave ${game.wave}</span>
-                        <span>☀️ ${game.playerSun} sun</span>
-                        <span>⏰ ${timeSince}</span>
+                <div class="game-card-header">
+                    <div class="game-name">
+                        ${statusIcon} ${gameName}
+                    </div>
+                    <div class="game-status status-${game.status}">
+                        ${game.status.toUpperCase()}
                     </div>
                 </div>
-                <div class="active-game-status status-${game.status}">
-                    ${game.status}
+                <div class="game-details">
+                    <div class="game-info-row">
+                        <span class="info-item">
+                            ${modeIcon} ${this.formatMode(game.mode)}
+                        </span>
+                        <span class="info-item">
+                            👥 ${game.players} player${game.players > 1 ? 's' : ''}
+                        </span>
+                        <span class="info-item">
+                            🌊 Wave ${game.wave}
+                        </span>
+                    </div>
+                    <div class="game-info-row">
+                        <span class="info-item">
+                            ☀️ ${game.playerSun} sun
+                        </span>
+                        <span class="info-item">
+                            📅 ${gameDate.toLocaleDateString()}
+                        </span>
+                        <span class="info-item time-ago">
+                            ⏰ ${timeAgo}
+                        </span>
+                    </div>
+                </div>
+                <div class="game-actions">
+                    <button class="resume-game-btn">
+                        ${game.status === 'paused' ? '▶️ Resume' : '🔄 Continue'}
+                    </button>
                 </div>
             `;
             
@@ -1776,6 +1936,8 @@ class PlantsVsZombiesClient {
     hideActiveGames() {
         document.getElementById('resumeGameBtn').style.display = 'none';
         document.getElementById('activeGamesList').style.display = 'none';
+        // Clear game ID to ensure fresh start for new games
+        document.getElementById('gameIdInput').value = '';
     }
 
     formatTimeSince(timestamp) {
@@ -1789,6 +1951,240 @@ class PlantsVsZombiesClient {
         if (hours > 0) return `${hours}h ago`;
         if (minutes > 0) return `${minutes}m ago`;
         return 'Just now';
+    }
+
+    generateGameName(game, gameDate) {
+        // Create friendly game names based on context
+        const timeOfDay = gameDate.getHours();
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const dayName = dayNames[gameDate.getDay()];
+        
+        let timePeriod;
+        if (timeOfDay < 6) timePeriod = 'Night';
+        else if (timeOfDay < 12) timePeriod = 'Morning';
+        else if (timeOfDay < 17) timePeriod = 'Afternoon';
+        else if (timeOfDay < 21) timePeriod = 'Evening';
+        else timePeriod = 'Night';
+        
+        // Generate contextual names
+        const gameNames = [
+            `${dayName} ${timePeriod} Defense`,
+            `${timePeriod} Garden Battle`,
+            `${dayName}'s Last Stand`,
+            `Wave ${game.wave} Challenge`,
+            `${timePeriod} Zombie Hunt`,
+            `Garden Defense ${gameDate.getDate()}/${gameDate.getMonth() + 1}`
+        ];
+        
+        // Pick a name based on game characteristics
+        if (game.wave >= 10) return `Epic ${timePeriod} Battle`;
+        if (game.status === 'paused') return `Paused ${timePeriod} Game`;
+        if (game.players > 1) return `Team ${timePeriod} Defense`;
+        
+        return gameNames[Math.floor(Math.random() * gameNames.length)];
+    }
+    
+    getStatusIcon(status) {
+        const icons = {
+            'playing': '🎮',
+            'paused': '⏸️',
+            'waiting': '⏳',
+            'completed': '✅'
+        };
+        return icons[status] || '🎯';
+    }
+    
+    getModeIcon(mode) {
+        const icons = {
+            'cooperative': '🤝',
+            'versus': '⚔️',
+            'survival': '🏃',
+            'challenge': '🎯'
+        };
+        return icons[mode] || '🎮';
+    }
+    
+    formatMode(mode) {
+        const modes = {
+            'cooperative': 'Co-op',
+            'versus': 'Versus',
+            'survival': 'Survival',
+            'challenge': 'Challenge'
+        };
+        return modes[mode] || mode.charAt(0).toUpperCase() + mode.slice(1);
+    }
+    
+    // ==========================================
+    // NEW MAIN MENU SYSTEM
+    // ==========================================
+
+    async createNewGame() {
+        const playerName = document.getElementById('newPlayerNameInput').value.trim();
+        const gameMode = document.querySelector('input[name="newGameMode"]:checked').value;
+        
+        if (!playerName) {
+            this.showNotification('Please enter your name', 'warning');
+            return;
+        }
+        
+        if (playerName.length > 20) {
+            this.showNotification('Name must be 20 characters or less', 'warning');
+            return;
+        }
+        
+        try {
+            this.showLoadingScreen('Creating new game...');
+            
+            this.socket.emit('join_game', {
+                playerName: playerName,
+                gameId: null, // Always null for new games
+                gameMode: gameMode
+            });
+            
+        } catch (error) {
+            console.error('❌ Error creating new game:', error);
+            this.hideLoadingScreen();
+            this.showNotification('Failed to create game', 'error');
+        }
+    }
+
+    async loadSavedGames(playerName) {
+        try {
+            console.log('🔍 Loading saved games for player:', playerName);
+            
+            const response = await fetch(`/api/player/${encodeURIComponent(playerName)}/games`);
+            const games = await response.json();
+            
+            console.log('📋 Found saved games:', games);
+            this.displaySavedGames(games);
+            
+        } catch (error) {
+            console.error('❌ Failed to load saved games:', error);
+            this.hideSavedGames();
+            this.showNotification('Failed to load saved games', 'error');
+        }
+    }
+
+    displaySavedGames(games) {
+        const savedGamesList = document.getElementById('savedGamesList');
+        const noSavedGamesMessage = document.getElementById('noSavedGamesMessage');
+        const savedGamesContainer = document.getElementById('savedGamesContainer');
+        const savedGamesCount = document.getElementById('savedGamesCount');
+        
+        if (games.length === 0) {
+            savedGamesList.style.display = 'none';
+            noSavedGamesMessage.style.display = 'block';
+            return;
+        }
+        
+        // Show saved games list
+        savedGamesList.style.display = 'block';
+        noSavedGamesMessage.style.display = 'none';
+        
+        // Update count
+        savedGamesCount.textContent = `${games.length} game${games.length > 1 ? 's' : ''} found`;
+        
+        // Clear existing games
+        savedGamesContainer.innerHTML = '';
+        
+        // Add each saved game
+        games.forEach((game, index) => {
+            const gameItem = document.createElement('div');
+            gameItem.className = 'saved-game-item';
+            gameItem.dataset.gameId = game.gameId;
+            
+            // Create a friendly game name
+            const gameDate = new Date(game.createdAt);
+            const gameName = this.generateGameName(game, gameDate);
+            const timeAgo = this.formatTimeSince(game.lastActivity);
+            const statusIcon = this.getStatusIcon(game.status);
+            const modeIcon = this.getModeIcon(game.mode);
+            
+            gameItem.innerHTML = `
+                <div class="save-game-header">
+                    <div class="save-game-name">
+                        ${statusIcon} ${gameName}
+                    </div>
+                    <div class="save-game-status status-${game.status}">
+                        ${game.status.toUpperCase()}
+                    </div>
+                </div>
+                <div class="save-game-details">
+                    <div class="save-detail-item">
+                        ${modeIcon} ${this.formatMode(game.mode)}
+                    </div>
+                    <div class="save-detail-item">
+                        👥 ${game.players} player${game.players > 1 ? 's' : ''}
+                    </div>
+                    <div class="save-detail-item">
+                        🌊 Wave ${game.wave}
+                    </div>
+                    <div class="save-detail-item">
+                        ☀️ ${game.playerSun} sun
+                    </div>
+                    <div class="save-detail-item">
+                        📅 ${gameDate.toLocaleDateString()}
+                    </div>
+                    <div class="save-detail-item">
+                        ⏰ ${timeAgo}
+                    </div>
+                </div>
+                <div class="save-game-actions">
+                    <button class="load-save-btn" onclick="window.gameClient.loadSavedGame('${game.gameId}')">
+                        ${game.status === 'paused' ? '▶️ Resume' : '🔄 Continue'}
+                    </button>
+                    <button class="delete-save-btn" onclick="window.gameClient.deleteSavedGame('${game.gameId}')">
+                        🗑️ Delete
+                    </button>
+                </div>
+            `;
+            
+            savedGamesContainer.appendChild(gameItem);
+        });
+    }
+
+    hideSavedGames() {
+        document.getElementById('savedGamesList').style.display = 'none';
+        document.getElementById('noSavedGamesMessage').style.display = 'none';
+    }
+
+    async loadSavedGame(gameId) {
+        const playerName = document.getElementById('resumePlayerNameInput').value.trim();
+        
+        if (!playerName) {
+            this.showNotification('Please enter your player name', 'warning');
+            return;
+        }
+        
+        try {
+            this.showLoadingScreen('Loading saved game...');
+            
+            this.socket.emit('join_game', {
+                playerName: playerName,
+                gameId: gameId,
+                gameMode: 'cooperative' // Mode doesn't matter for existing games
+            });
+            
+        } catch (error) {
+            console.error('❌ Error loading saved game:', error);
+            this.hideLoadingScreen();
+            this.showNotification('Failed to load saved game', 'error');
+        }
+    }
+
+    async deleteSavedGame(gameId) {
+        if (!confirm('Are you sure you want to delete this saved game? This action cannot be undone.')) {
+            return;
+        }
+        
+        try {
+            // TODO: Implement delete saved game API
+            this.showNotification('Delete functionality coming soon!', 'info');
+            
+        } catch (error) {
+            console.error('❌ Error deleting saved game:', error);
+            this.showNotification('Failed to delete saved game', 'error');
+        }
     }
 
     resumeGame(gameId) {

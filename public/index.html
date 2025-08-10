@@ -221,8 +221,128 @@
         </div>
     </div>
 
-    <!-- Login Screen -->
-    <div id="loginScreen" class="login-screen">
+    <!-- Main Menu Screen -->
+    <div id="mainMenuScreen" class="screen">
+        <div class="main-menu-container">
+            <div class="game-title">
+                <h1>🌻 Plants vs Zombies</h1>
+                <p class="game-subtitle">Redis Edition - Defend Your Garden!</p>
+            </div>
+            
+            <div class="main-menu-buttons">
+                <button id="startNewGameBtn" class="main-menu-btn new-game-btn">
+                    <div class="btn-icon">🌱</div>
+                    <div class="btn-content">
+                        <div class="btn-title">Start New Game</div>
+                        <div class="btn-description">Begin a fresh adventure</div>
+                    </div>
+                </button>
+                
+                <button id="resumeGameMenuBtn" class="main-menu-btn resume-game-btn">
+                    <div class="btn-icon">🔄</div>
+                    <div class="btn-content">
+                        <div class="btn-title">Resume Game</div>
+                        <div class="btn-description">Continue your saved progress</div>
+                    </div>
+                </button>
+                
+                <button id="leaderboardMenuBtn" class="main-menu-btn leaderboard-btn">
+                    <div class="btn-icon">🏆</div>
+                    <div class="btn-content">
+                        <div class="btn-title">Leaderboard</div>
+                        <div class="btn-description">View top players</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Game Setup Screen -->
+    <div id="newGameScreen" class="screen" style="display: none;">
+        <div class="login-container">
+            <div class="login-header">
+                <h2>🌱 Start New Game</h2>
+                <p>Enter your player name to begin your garden defense!</p>
+            </div>
+            
+            <div class="login-form">
+                <div class="input-group">
+                    <label for="newPlayerNameInput">Player Name</label>
+                    <input type="text" id="newPlayerNameInput" placeholder="Enter your name" maxlength="20" required autocomplete="off">
+                </div>
+                
+                <div class="game-mode-selection">
+                    <label>Game Mode</label>
+                    <div class="mode-options">
+                        <label class="mode-option">
+                            <input type="radio" name="newGameMode" value="cooperative" checked>
+                            <span>🤝 Cooperative</span>
+                        </label>
+                        <label class="mode-option">
+                            <input type="radio" name="newGameMode" value="versus">
+                            <span>⚔️ Versus</span>
+                        </label>
+                        <label class="mode-option">
+                            <input type="radio" name="newGameMode" value="survival">
+                            <span>🏃 Survival</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-actions">
+                    <button id="createNewGameBtn" class="action-btn primary-btn">
+                        🎮 Create Game
+                    </button>
+                    <button id="backToMainMenuBtn" class="action-btn secondary-btn">
+                        ← Back to Menu
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resume Game Screen -->
+    <div id="resumeGameScreen" class="screen" style="display: none;">
+        <div class="resume-container">
+            <div class="resume-header">
+                <h2>🔄 Resume Game</h2>
+                <p>Select a saved game to continue your adventure</p>
+            </div>
+            
+            <div class="player-name-section">
+                <div class="input-group">
+                    <label for="resumePlayerNameInput">Enter Your Player Name</label>
+                    <input type="text" id="resumePlayerNameInput" placeholder="Enter your name to find saves" maxlength="20" autocomplete="off">
+                </div>
+            </div>
+            
+            <div id="savedGamesList" class="saved-games-list" style="display: none;">
+                <div class="saved-games-header">
+                    <h3>Your Saved Games</h3>
+                    <div id="savedGamesCount" class="games-count"></div>
+                </div>
+                <div id="savedGamesContainer" class="saved-games-container">
+                    <!-- Saved games will be populated here -->
+                </div>
+            </div>
+            
+            <div id="noSavedGamesMessage" class="no-saves-message" style="display: none;">
+                <div class="no-saves-icon">💾</div>
+                <h4>No Saved Games Found</h4>
+                <p>No saved games found for this player name.</p>
+                <p>Start a new game to begin your adventure!</p>
+            </div>
+            
+            <div class="form-actions">
+                <button id="backToMainFromResumeBtn" class="action-btn secondary-btn">
+                    ← Back to Menu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legacy Login Screen (hidden, for compatibility) -->
+    <div id="loginScreen" class="screen" style="display: none;">
         <div class="login-container">
             <div class="login-header">
                 <h1>🌻 Plants vs Zombies</h1>
@@ -237,7 +357,7 @@
                 
                 <div class="input-group">
                     <label for="gameIdInput">Game ID (Optional)</label>
-                    <input type="text" id="gameIdInput" placeholder="Leave blank to create new game" maxlength="50">
+                    <input type="text" id="gameIdInput" placeholder="Leave blank to create new game" maxlength="50" autocomplete="off">
                 </div>
                 
                 <div class="game-mode-selection">
@@ -263,11 +383,14 @@
                 </button>
                 
                 <button id="resumeGameBtn" class="resume-btn" style="display: none;">
-                    🔄 Resume Game
+                    🎮 Continue Playing
                 </button>
                 
                 <div id="activeGamesList" class="active-games-list" style="display: none;">
-                    <h3>Your Active Games</h3>
+                    <div class="active-games-header">
+                        <h3>🎮 Your Saved Games</h3>
+                        <p class="active-games-subtitle">Continue where you left off</p>
+                    </div>
                     <div id="activeGamesContainer" class="active-games-container">
                         <!-- Active games will be populated here -->
                     </div>

@@ -341,19 +341,38 @@ class PlantsVsZombiesEngine {
         }
 
         // Check if player is already in the game (resuming)
-        const isRejoining = gameState.players && gameState.players[playerId];
+        console.log('🔍 Checking if player is rejoining...');
+        console.log('🔍 Game players:', Object.keys(gameState.players || {}));
+        console.log('🔍 Looking for player:', playerId);
         
-        if (gameState.status !== 'waiting' && !isRejoining) {
+        const isRejoining = gameState.players && gameState.players[playerId];
+        console.log('🔍 Direct match (case-sensitive):', !!isRejoining);
+        
+        // Check for case-insensitive match
+        const playerNames = Object.keys(gameState.players || {});
+        const matchingPlayerName = playerNames.find(name => 
+            name.toLowerCase() === playerId.toLowerCase()
+        );
+        const isCaseInsensitiveRejoining = !!matchingPlayerName;
+        console.log('🔍 Case-insensitive match:', isCaseInsensitiveRejoining, 'as', matchingPlayerName);
+        
+        if (gameState.status !== 'waiting' && !isRejoining && !isCaseInsensitiveRejoining) {
+            console.log('❌ Game in progress and player not rejoining');
             throw new Error('Game already in progress');
         }
 
         // If rejoining, just return the current game state
-        if (isRejoining) {
-            console.log(`🔄 Player ${playerId} rejoining game ${gameId}`);
+        if (isRejoining || isCaseInsensitiveRejoining) {
+            const actualPlayerName = matchingPlayerName || playerId;
+            console.log(`🔄 Player ${playerId} rejoining game ${gameId} as ${actualPlayerName}`);
+            console.log(`🔍 Game status: ${gameState.status}`);
+            console.log(`🔍 Current wave: ${gameState.currentWave}`);
+            console.log(`🔍 Wave manager exists: ${this.waveManagers.has(gameId)}`);
+            console.log(`🔍 Game loop exists: ${this.gameLoops.has(gameId)}`);
             
             // Ensure wave manager is running for this game
-            if (!this.waveManagers.has(gameId) && gameState.status === 'playing') {
-                console.log(`🌊 Restarting wave manager for rejoined game ${gameId}`);
+            if (!this.waveManagers.has(gameId) && (gameState.status === 'playing' || gameState.status === 'paused')) {
+                console.log(`🌊 Restarting wave manager for rejoined game ${gameId} (status: ${gameState.status})`);
                 const waveManager = new WaveManager(this, gameState);
                 this.waveManagers.set(gameId, waveManager);
                 
@@ -364,8 +383,8 @@ class PlantsVsZombiesEngine {
             }
             
             // Ensure game loop is running for this game
-            if (!this.gameLoops.has(gameId) && gameState.status === 'playing') {
-                console.log(`🔄 Restarting game loop for rejoined game ${gameId}`);
+            if (!this.gameLoops.has(gameId) && (gameState.status === 'playing' || gameState.status === 'paused')) {
+                console.log(`🔄 Restarting game loop for rejoined game ${gameId} (status: ${gameState.status})`);
                 const interval = setInterval(async () => {
                     try {
                         await this.updateGame(gameId);
@@ -377,11 +396,25 @@ class PlantsVsZombiesEngine {
                 this.gameLoops.set(gameId, interval);
             }
             
+            // Auto-resume paused games when player rejoins
+            let wasResumed = false;
+            if (gameState.status === 'paused') {
+                console.log(`🔄 Auto-resuming paused game ${gameId} for rejoining player`);
+                gameState.status = 'playing';
+                gameState.lastUpdate = Date.now();
+                wasResumed = true;
+                
+                // Save the updated state
+                await this.redis.saveGameState(gameId, gameState);
+            }
+            
             return {
                 gameId: gameId,
-                playerId: playerId,
+                playerId: actualPlayerName, // Use the actual player name from the game state
                 gameState: gameState,
-                isRejoining: true
+                isRejoining: true,
+                wasResumed: wasResumed,
+                resumedBy: actualPlayerName
             };
         }
 
