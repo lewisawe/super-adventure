@@ -32,6 +32,14 @@
                 <button id="pauseGameBtn" class="nav-btn pause-btn" style="display: none;">
                     ⏸️ Pause
                 </button>
+                <div class="audio-controls" style="display: none;" id="audioControls">
+                    <button id="musicToggle" class="audio-btn" title="Toggle Music">
+                        🎵
+                    </button>
+                    <button id="sfxToggle" class="audio-btn" title="Toggle Sound Effects">
+                        🔊
+                    </button>
+                </div>
             </div>
             
             <div class="game-stats">
@@ -318,6 +326,7 @@
 
     <!-- Scripts -->
     <script src="/socket.io/socket.io.js"></script>
+    <script src="audio-manager.js"></script>
     <script src="game-client.js"></script>
 </body>
 </html>

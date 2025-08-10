@@ -34,6 +34,10 @@ class PlantsVsZombiesClient {
             ANIMATION_SPEED: 16 // ~60 FPS
         };
         
+        // Track projectiles for shooting animations
+        this.previousProjectiles = new Set();
+        this.shootingAnimationTimeouts = new Map();
+        
         this.init();
     }
 
@@ -43,6 +47,9 @@ class PlantsVsZombiesClient {
         try {
             // Show loading screen
             this.showLoadingScreen();
+            
+            // Initialize audio manager
+            await this.initializeAudio();
             
             // Initialize socket connection
             await this.initializeSocket();
@@ -65,6 +72,37 @@ class PlantsVsZombiesClient {
         } catch (error) {
             console.error('❌ Client initialization failed:', error);
             this.showNotification('Failed to initialize game', 'error');
+        }
+    }
+
+    // ==========================================
+    // AUDIO INITIALIZATION
+    // ==========================================
+
+    async initializeAudio() {
+        try {
+            console.log('🎵 Initializing audio system...');
+            
+            // Initialize audio manager on first user interaction
+            document.addEventListener('click', async () => {
+                if (!window.audioManager.isInitialized) {
+                    await window.audioManager.init();
+                    await window.audioManager.resume();
+                    console.log('🎵 Audio system ready');
+                }
+            }, { once: true });
+            
+            // Also try to initialize on any key press
+            document.addEventListener('keydown', async () => {
+                if (!window.audioManager.isInitialized) {
+                    await window.audioManager.init();
+                    await window.audioManager.resume();
+                    console.log('🎵 Audio system ready');
+                }
+            }, { once: true });
+            
+        } catch (error) {
+            console.warn('🔇 Audio initialization failed:', error);
         }
     }
 
@@ -118,6 +156,10 @@ class PlantsVsZombiesClient {
         this.socket.on('game_started', (data) => {
             console.log('🚀 Game started:', data);
             this.handleGameStarted(data);
+            // Start background music
+            setTimeout(() => {
+                window.audioManager.startBackgroundMusic();
+            }, 1000);
         });
         
         this.socket.on('game_update', (data) => {
@@ -139,6 +181,7 @@ class PlantsVsZombiesClient {
         this.socket.on('plant_placed', (data) => {
             console.log('🌱 Plant placed:', data);
             this.handlePlantPlaced(data);
+            window.audioManager.playSound('plantPlace', 0.6);
         });
         
         // Wave events
@@ -249,6 +292,15 @@ class PlantsVsZombiesClient {
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             this.handleKeyboardShortcuts(e);
+        });
+        
+        // Audio controls
+        document.getElementById('musicToggle').addEventListener('click', () => {
+            this.toggleMusic();
+        });
+        
+        document.getElementById('sfxToggle').addEventListener('click', () => {
+            this.toggleSFX();
         });
         
         // Window events
@@ -541,6 +593,7 @@ class PlantsVsZombiesClient {
         document.getElementById('startGameBtn').style.display = 'none';
         document.getElementById('pauseGameBtn').style.display = 'block';
         this.updatePauseButton();
+        this.showAudioControls();
         
         this.updateGameStats();
         this.showNotification(data.message || 'Game started!', 'success');
@@ -846,6 +899,22 @@ class PlantsVsZombiesClient {
     }
 
     updateProjectiles() {
+        // Check for new projectiles to trigger shooting animations
+        if (this.gameState.projectiles) {
+            const currentProjectileIds = new Set(this.gameState.projectiles.map(p => p.id));
+            
+            // Find newly created projectiles
+            this.gameState.projectiles.forEach(projectile => {
+                if (!this.previousProjectiles.has(projectile.id)) {
+                    // New projectile detected - trigger shooting animation
+                    this.triggerPlantShootingAnimation(projectile);
+                }
+            });
+            
+            // Update previous projectiles set
+            this.previousProjectiles = currentProjectileIds;
+        }
+        
         // Clear existing projectiles (they move frequently, so redraw is acceptable)
         document.querySelectorAll('.projectile').forEach(el => el.remove());
         
@@ -977,6 +1046,8 @@ class PlantsVsZombiesClient {
         plantElement.className = 'plant';
         plantElement.textContent = plant.type;
         plantElement.dataset.plantId = plant.id;
+        plantElement.dataset.row = plant.row;
+        plantElement.dataset.col = plant.col;
         
         // Add plant-specific classes
         if (plant.type === '🌻') plantElement.classList.add('sunflower');
@@ -1055,6 +1126,88 @@ class PlantsVsZombiesClient {
         document.getElementById('projectilesLayer').appendChild(projectileElement);
     }
 
+    triggerPlantShootingAnimation(projectile) {
+        // Use integer coordinates - projectile starts at plant position but moves immediately
+        const plantRow = Math.floor(projectile.y);
+        const plantCol = Math.floor(projectile.x);
+        
+        // Find the plant that shot this projectile
+        const plantElement = document.querySelector(
+            `.plant[data-row="${plantRow}"][data-col="${plantCol}"]`
+        );
+        
+        if (!plantElement) {
+            return;
+        }
+        
+        // Clear any existing shooting animation timeout
+        const plantKey = `${plantRow}-${plantCol}`;
+        if (this.shootingAnimationTimeouts.has(plantKey)) {
+            clearTimeout(this.shootingAnimationTimeouts.get(plantKey));
+        }
+        
+        // Remove any existing shooting classes
+        plantElement.classList.remove('shooting', 'peashooter', 'snow-pea', 'cactus', 'mushroom', 'default');
+        
+        // Add shooting class and plant-specific class
+        plantElement.classList.add('shooting');
+        
+        // Add plant-specific shooting animation class and sound
+        switch (projectile.type) {
+            case '🌱': // Peashooter
+                plantElement.classList.add('peashooter');
+                this.createMuzzleFlash(plantElement, 'pea', '💥');
+                window.audioManager.playSound('peashooter', 0.7);
+                break;
+            case '❄️': // Snow Pea
+                plantElement.classList.add('snow-pea');
+                this.createMuzzleFlash(plantElement, 'snow', '❄️');
+                window.audioManager.playSound('snowPea', 0.6);
+                break;
+            case '🌵': // Cactus
+                plantElement.classList.add('cactus');
+                this.createMuzzleFlash(plantElement, 'spike', '⚡');
+                window.audioManager.playSound('cactus', 0.8);
+                break;
+            case '🍄': // Puff-shroom
+                plantElement.classList.add('mushroom');
+                this.createMuzzleFlash(plantElement, 'spore', '💨');
+                window.audioManager.playSound('mushroom', 0.5);
+                break;
+            default:
+                plantElement.classList.add('default');
+                this.createMuzzleFlash(plantElement, 'pea', '✨');
+                window.audioManager.playSound('peashooter', 0.6);
+                break;
+        }
+        
+        // Remove shooting animation after it completes
+        const timeout = setTimeout(() => {
+            plantElement.classList.remove('shooting', 'peashooter', 'snow-pea', 'cactus', 'mushroom', 'default');
+            this.shootingAnimationTimeouts.delete(plantKey);
+        }, 400); // Match CSS animation duration
+        
+        this.shootingAnimationTimeouts.set(plantKey, timeout);
+    }
+
+    createMuzzleFlash(plantElement, type, emoji) {
+        // Create muzzle flash element
+        const muzzleFlash = document.createElement('div');
+        muzzleFlash.className = `muzzle-flash ${type}`;
+        muzzleFlash.textContent = emoji;
+        
+        // Position relative to plant
+        plantElement.style.position = 'relative';
+        plantElement.appendChild(muzzleFlash);
+        
+        // Remove muzzle flash after animation
+        setTimeout(() => {
+            if (muzzleFlash.parentNode) {
+                muzzleFlash.parentNode.removeChild(muzzleFlash);
+            }
+        }, 200); // Match muzzleFlash animation duration
+    }
+
     createHealthBar(currentHealth, maxHealth) {
         const healthBar = document.createElement('div');
         healthBar.className = 'health-bar';
@@ -1112,6 +1265,9 @@ class PlantsVsZombiesClient {
         effect.style.fontSize = '4em';
         effect.style.zIndex = '2000';
         effect.style.animation = 'explode 2s ease-out forwards';
+        
+        // Play explosion sound for powerups
+        window.audioManager.playSound('explosion', 0.4);
         
         document.body.appendChild(effect);
         
@@ -1528,6 +1684,56 @@ class PlantsVsZombiesClient {
             '💥': 100000  // Damage Boost
         };
         return cooldowns[powerupType] || 60000;
+    }
+
+    // ==========================================
+    // AUDIO CONTROLS
+    // ==========================================
+
+    toggleMusic() {
+        const musicBtn = document.getElementById('musicToggle');
+        const isMuted = musicBtn.classList.contains('muted');
+        
+        if (isMuted) {
+            // Unmute music
+            window.audioManager.setMusicVolume(0.3);
+            musicBtn.classList.remove('muted');
+            musicBtn.textContent = '🎵';
+            musicBtn.title = 'Mute Music';
+        } else {
+            // Mute music
+            window.audioManager.setMusicVolume(0);
+            musicBtn.classList.add('muted');
+            musicBtn.textContent = '🔇';
+            musicBtn.title = 'Unmute Music';
+        }
+    }
+
+    toggleSFX() {
+        const sfxBtn = document.getElementById('sfxToggle');
+        const isMuted = sfxBtn.classList.contains('muted');
+        
+        if (isMuted) {
+            // Unmute SFX
+            window.audioManager.setSFXVolume(0.5);
+            sfxBtn.classList.remove('muted');
+            sfxBtn.textContent = '🔊';
+            sfxBtn.title = 'Mute Sound Effects';
+        } else {
+            // Mute SFX
+            window.audioManager.setSFXVolume(0);
+            sfxBtn.classList.add('muted');
+            sfxBtn.textContent = '🔇';
+            sfxBtn.title = 'Unmute Sound Effects';
+        }
+    }
+
+    showAudioControls() {
+        document.getElementById('audioControls').style.display = 'flex';
+    }
+
+    hideAudioControls() {
+        document.getElementById('audioControls').style.display = 'none';
     }
 }
 
