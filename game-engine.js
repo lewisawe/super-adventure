@@ -471,7 +471,20 @@ class PlantsVsZombiesEngine {
 
         await this.redis.saveGameState(gameId, gameState);
         
-        // Publish update
+        // Immediately broadcast game update with the new plant
+        await this.redis.publishGameUpdate(gameId, 'game_update', {
+            plants: gameState.plants,
+            zombies: gameState.zombies,
+            projectiles: gameState.projectiles,
+            players: gameState.players,
+            currentWave: gameState.currentWave,
+            waveInProgress: gameState.waveInProgress,
+            board: gameState.board,
+            lawnMowers: gameState.lawnMowers,
+            activeEffects: gameState.activeEffects
+        });
+        
+        // Publish plant placement event
         await this.redis.publishGameUpdate(gameId, 'plant_placed', {
             plant: plant,
             playerId: playerId,
@@ -620,7 +633,7 @@ class PlantsVsZombiesEngine {
         this.checkGameEnd(gameState);
 
         // Save and broadcast updates
-        if (hasUpdates || gameState.zombies.length > 0 || gameState.projectiles.length > 0) {
+        if (hasUpdates || gameState.plants.length > 0 || gameState.zombies.length > 0 || gameState.projectiles.length > 0) {
             gameState.lastUpdate = now;
             await this.redis.saveGameState(gameId, gameState);
             

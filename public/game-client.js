@@ -430,6 +430,23 @@ class PlantsVsZombiesClient {
             return;
         }
         
+        // Check if position is already occupied
+        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        if (cell && cell.querySelector('.plant')) {
+            this.showNotification('Position already occupied', 'warning');
+            return;
+        }
+        
+        // Check if player has enough sun
+        const plantData = this.getPlantData(this.selectedPlant.type);
+        if (this.gameState && this.gameState.players[this.playerId].sun < plantData.cost) {
+            this.showNotification('Not enough sun', 'warning');
+            return;
+        }
+        
+        // Provide immediate visual feedback (temporary plant preview)
+        this.showPlantPreview(row, col, this.selectedPlant.type);
+        
         this.socket.emit('place_plant', {
             plantType: this.selectedPlant.type,
             row: row,
@@ -441,6 +458,42 @@ class PlantsVsZombiesClient {
         document.querySelectorAll('.plant-card').forEach(card => {
             card.classList.remove('selected');
         });
+    }
+    
+    showPlantPreview(row, col, plantType) {
+        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        if (!cell) return;
+        
+        // Create temporary preview element
+        const preview = document.createElement('div');
+        preview.className = 'plant plant-preview-temp';
+        preview.textContent = plantType;
+        preview.style.opacity = '0.7';
+        preview.style.filter = 'brightness(1.2)';
+        
+        cell.appendChild(preview);
+        
+        // Remove preview after 2 seconds (in case server response is delayed)
+        setTimeout(() => {
+            if (preview.parentNode) {
+                preview.remove();
+            }
+        }, 2000);
+    }
+    
+    getPlantData(plantType) {
+        // Plant data for client-side validation
+        const plantData = {
+            '🌻': { cost: 50 },
+            '🌱': { cost: 100 },
+            '❄️': { cost: 175 },
+            '🌰': { cost: 50 },
+            '🍒': { cost: 150 },
+            '🌶️': { cost: 125 },
+            '🌵': { cost: 125 },
+            '🍄': { cost: 0 }
+        };
+        return plantData[plantType] || { cost: 100 };
     }
 
     usePowerup(powerupType) {
@@ -550,12 +603,42 @@ class PlantsVsZombiesClient {
     }
 
     handlePlantPlaced(data) {
+        // Remove any temporary preview for this position
+        const cell = document.querySelector(`[data-row="${data.plant.row}"][data-col="${data.plant.col}"]`);
+        if (cell) {
+            const tempPreview = cell.querySelector('.plant-preview-temp');
+            if (tempPreview) {
+                tempPreview.remove();
+            }
+        }
+        
         // Start cooldown for this plant type
         this.startPlantCooldown(data.plant.type);
         
         // Update game state
         if (this.gameState) {
             this.gameState.players[this.playerId].sun = data.remainingSun;
+            
+            // Immediately add the plant to the local game state for instant visual feedback
+            if (!this.gameState.plants) {
+                this.gameState.plants = [];
+            }
+            
+            // Check if plant already exists in local state
+            const existingPlantIndex = this.gameState.plants.findIndex(p => p.id === data.plant.id);
+            if (existingPlantIndex === -1) {
+                this.gameState.plants.push(data.plant);
+                
+                // Update board state
+                if (!this.gameState.board) {
+                    this.gameState.board = Array(5).fill().map(() => Array(9).fill().map(() => ({})));
+                }
+                this.gameState.board[data.plant.row][data.plant.col].plant = data.plant;
+                
+                // Immediately update the visual board
+                this.updateGameBoard();
+            }
+            
             this.updateGameStats();
         }
         
