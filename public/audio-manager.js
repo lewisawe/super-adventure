@@ -45,7 +45,6 @@ class AudioManager {
             await this.generateSoundEffects();
             
             this.isInitialized = true;
-            console.log('🎵 Audio Manager initialized');
             
         } catch (error) {
             console.warn('🔇 Audio initialization failed:', error);

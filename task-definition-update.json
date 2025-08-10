@@ -1,0 +1,83 @@
+{
+  "family": "production-pvz-task",
+  "taskRoleArn": "arn:aws:iam::120651511769:role/production-pvz-ecs-task-role",
+  "executionRoleArn": "arn:aws:iam::120651511769:role/production-pvz-ecs-task-execution-role",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "pvz-app",
+      "image": "120651511769.dkr.ecr.us-east-1.amazonaws.com/plants-vs-zombies:latest",
+      "command": ["node", "server.js"],
+      "cpu": 0,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3001,
+          "hostPort": 3001,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "REDIS_HOST",
+          "value": "master.production-pvz-redis.zlnlgv.use1.cache.amazonaws.com"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "REDIS_TLS",
+          "value": "true"
+        },
+        {
+          "name": "PORT",
+          "value": "3001"
+        },
+        {
+          "name": "REDIS_PORT",
+          "value": "6379"
+        },
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "GAME_TIMEOUT",
+          "value": "3600000"
+        },
+        {
+          "name": "MAX_PLAYERS_PER_GAME",
+          "value": "4"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "REDIS_AUTH_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:120651511769:secret:production-pvz-redis-auth-di9wnh:auth_token::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/production-pvz",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:3001/api/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

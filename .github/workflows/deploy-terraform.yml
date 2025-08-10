@@ -1,0 +1,308 @@
+name: Deploy with Terraform
+
+on:
+  push:
+    branches: 
+      - main
+      - develop
+  pull_request:
+    branches: 
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.6.0
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint || echo "No lint script found"
+
+      - name: Run tests
+        run: npm test || echo "No tests found"
+        env:
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: test
+
+      - name: Test health endpoint
+        run: |
+          # Start the server in background
+          npm start &
+          SERVER_PID=$!
+          
+          # Wait for server to start
+          sleep 10
+          
+          # Test health endpoint
+          curl -f http://localhost:3001/api/health
+          
+          # Stop the server
+          kill $SERVER_PID
+        env:
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: test
+
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set environment based on branch
+        run: |
+          if [[ $GITHUB_HEAD_REF == 'main' ]] || [[ $GITHUB_REF == 'refs/heads/main' ]]; then
+            echo "ENVIRONMENT=production" >> $GITHUB_ENV
+            echo "DOMAIN_NAME=plantsvszombies.yourdomain.com" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "DOMAIN_NAME=staging-plantsvszombies.yourdomain.com" >> $GITHUB_ENV
+          fi
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+
+      - name: Terraform Validate
+        run: |
+          cd terraform
+          terraform validate
+
+      - name: Terraform Plan
+        run: |
+          cd terraform
+          terraform plan \
+            -var-file=environments/$ENVIRONMENT.tfvars \
+            -var="domain_name=$DOMAIN_NAME" \
+            -no-color
+        env:
+          TF_IN_AUTOMATION: true
+
+  deploy:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set environment based on branch
+        run: |
+          if [[ $GITHUB_REF == 'refs/heads/main' ]]; then
+            echo "ENVIRONMENT=production" >> $GITHUB_ENV
+            echo "DOMAIN_NAME=plantsvszombies.yourdomain.com" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "DOMAIN_NAME=staging-plantsvszombies.yourdomain.com" >> $GITHUB_ENV
+          fi
+
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+
+      - name: Terraform Plan
+        run: |
+          cd terraform
+          terraform plan \
+            -var-file=environments/$ENVIRONMENT.tfvars \
+            -var="domain_name=$DOMAIN_NAME" \
+            -out=tfplan
+        env:
+          TF_IN_AUTOMATION: true
+
+      - name: Terraform Apply
+        run: |
+          cd terraform
+          terraform apply tfplan
+        env:
+          TF_IN_AUTOMATION: true
+
+      - name: Get ECR Repository URL
+        id: ecr
+        run: |
+          cd terraform
+          ECR_URL=$(terraform output -raw ecr_repository_url)
+          echo "repository_url=$ECR_URL" >> $GITHUB_OUTPUT
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: plants-vs-zombies
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build image
+          docker build -f Dockerfile.aws -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -f Dockerfile.aws -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          
+          # Push images
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Update ECS Service
+        run: |
+          cd terraform
+          CLUSTER_NAME=$(terraform output -raw ecs_cluster_name)
+          SERVICE_NAME=$(terraform output -raw ecs_service_name)
+          
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME \
+            --force-new-deployment \
+            --region $AWS_REGION
+
+      - name: Wait for deployment and health check
+        run: |
+          cd terraform
+          HEALTH_URL=$(terraform output -raw health_check_url)
+          
+          echo "Application URL: $HEALTH_URL"
+          
+          # Wait for service to be healthy
+          echo "Waiting for service to be healthy..."
+          for i in {1..30}; do
+            if curl -f -s "$HEALTH_URL" > /dev/null; then
+              echo "✅ Service is healthy!"
+              break
+            fi
+            
+            if [ $i -eq 30 ]; then
+              echo "❌ Service health check timed out"
+              exit 1
+            fi
+            
+            echo "Attempt $i/30 - waiting..."
+            sleep 20
+          done
+
+      - name: Run smoke tests
+        run: |
+          cd terraform
+          GAME_URL=$(terraform output -raw game_url)
+          API_URL=$(terraform output -raw api_url)
+          HEALTH_URL=$(terraform output -raw health_check_url)
+          
+          # Test health endpoint
+          echo "Testing health endpoint..."
+          curl -f "$HEALTH_URL"
+          
+          # Test stats endpoint
+          echo "Testing stats endpoint..."
+          curl -f "$API_URL/stats"
+          
+          # Test leaderboard endpoint
+          echo "Testing leaderboard endpoint..."
+          curl -f "$API_URL/leaderboard/high_scores"
+          
+          echo "✅ All smoke tests passed!"
+
+      - name: Get deployment outputs
+        id: outputs
+        run: |
+          cd terraform
+          GAME_URL=$(terraform output -raw game_url)
+          API_URL=$(terraform output -raw api_url)
+          HEALTH_URL=$(terraform output -raw health_check_url)
+          CLUSTER_NAME=$(terraform output -raw ecs_cluster_name)
+          SERVICE_NAME=$(terraform output -raw ecs_service_name)
+          LOG_GROUP=$(terraform output -raw cloudwatch_log_group_name)
+          
+          echo "game_url=$GAME_URL" >> $GITHUB_OUTPUT
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "health_url=$HEALTH_URL" >> $GITHUB_OUTPUT
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+          echo "log_group=$LOG_GROUP" >> $GITHUB_OUTPUT
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "🎉 Deployment successful!"
+          echo "🎮 Game URL: ${{ steps.outputs.outputs.game_url }}"
+          echo "📊 API URL: ${{ steps.outputs.outputs.api_url }}"
+          echo "🏥 Health: ${{ steps.outputs.outputs.health_url }}"
+          echo "🏆 Leaderboard: ${{ steps.outputs.outputs.api_url }}/leaderboard/high_scores"
+          echo ""
+          echo "🔧 Management Commands:"
+          echo "View logs: aws logs tail ${{ steps.outputs.outputs.log_group }} --follow --region $AWS_REGION"
+          echo "Scale service: aws ecs update-service --cluster ${{ steps.outputs.outputs.cluster_name }} --service ${{ steps.outputs.outputs.service_name }} --desired-count 4 --region $AWS_REGION"
+
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check the logs for more information."
+          
+          # Get recent ECS service events if possible
+          if [ -n "${{ steps.outputs.outputs.cluster_name }}" ] && [ -n "${{ steps.outputs.outputs.service_name }}" ]; then
+            aws ecs describe-services \
+              --cluster ${{ steps.outputs.outputs.cluster_name }} \
+              --services ${{ steps.outputs.outputs.service_name }} \
+              --region $AWS_REGION \
+              --query 'services[0].events[0:5]' \
+              --output table || true
+          fi

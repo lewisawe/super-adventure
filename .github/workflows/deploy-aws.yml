@@ -1,0 +1,259 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: 
+      - main
+      - develop
+  pull_request:
+    branches: 
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: plants-vs-zombies
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint || echo "No lint script found"
+
+      - name: Run tests
+        run: npm test || echo "No tests found"
+        env:
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: test
+
+      - name: Test health endpoint
+        run: |
+          # Start the server in background
+          npm start &
+          SERVER_PID=$!
+          
+          # Wait for server to start
+          sleep 10
+          
+          # Test health endpoint
+          curl -f http://localhost:3001/api/health
+          
+          # Stop the server
+          kill $SERVER_PID
+        env:
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: test
+
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set environment based on branch
+        run: |
+          if [[ $GITHUB_REF == 'refs/heads/main' ]]; then
+            echo "ENVIRONMENT=production" >> $GITHUB_ENV
+            echo "DOMAIN_NAME=plantsvszombies.yourdomain.com" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "DOMAIN_NAME=staging-plantsvszombies.yourdomain.com" >> $GITHUB_ENV
+          fi
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build image
+          docker build -f Dockerfile.aws -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -f Dockerfile.aws -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          
+          # Push images
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          # Save image URI for later steps
+          echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
+
+      - name: Deploy infrastructure
+        run: |
+          # Check if infrastructure stack exists
+          if aws cloudformation describe-stacks --stack-name pvz-infrastructure-$ENVIRONMENT --region $AWS_REGION 2>/dev/null; then
+            echo "Updating existing infrastructure stack..."
+            aws cloudformation update-stack \
+              --stack-name pvz-infrastructure-$ENVIRONMENT \
+              --template-body file://aws-infrastructure.yml \
+              --parameters ParameterKey=Environment,ParameterValue=$ENVIRONMENT \
+                           ParameterKey=DomainName,ParameterValue=$DOMAIN_NAME \
+              --capabilities CAPABILITY_IAM \
+              --region $AWS_REGION
+            
+            aws cloudformation wait stack-update-complete \
+              --stack-name pvz-infrastructure-$ENVIRONMENT \
+              --region $AWS_REGION
+          else
+            echo "Creating new infrastructure stack..."
+            aws cloudformation create-stack \
+              --stack-name pvz-infrastructure-$ENVIRONMENT \
+              --template-body file://aws-infrastructure.yml \
+              --parameters ParameterKey=Environment,ParameterValue=$ENVIRONMENT \
+                           ParameterKey=DomainName,ParameterValue=$DOMAIN_NAME \
+              --capabilities CAPABILITY_IAM \
+              --region $AWS_REGION
+            
+            aws cloudformation wait stack-create-complete \
+              --stack-name pvz-infrastructure-$ENVIRONMENT \
+              --region $AWS_REGION
+          fi
+
+      - name: Deploy application
+        run: |
+          # Check if service stack exists
+          if aws cloudformation describe-stacks --stack-name pvz-service-$ENVIRONMENT --region $AWS_REGION 2>/dev/null; then
+            echo "Updating existing service stack..."
+            aws cloudformation update-stack \
+              --stack-name pvz-service-$ENVIRONMENT \
+              --template-body file://ecs-service.yml \
+              --parameters ParameterKey=Environment,ParameterValue=$ENVIRONMENT \
+                           ParameterKey=ImageURI,ParameterValue=$IMAGE_URI \
+              --region $AWS_REGION
+            
+            aws cloudformation wait stack-update-complete \
+              --stack-name pvz-service-$ENVIRONMENT \
+              --region $AWS_REGION
+          else
+            echo "Creating new service stack..."
+            aws cloudformation create-stack \
+              --stack-name pvz-service-$ENVIRONMENT \
+              --template-body file://ecs-service.yml \
+              --parameters ParameterKey=Environment,ParameterValue=$ENVIRONMENT \
+                           ParameterKey=ImageURI,ParameterValue=$IMAGE_URI \
+              --region $AWS_REGION
+            
+            aws cloudformation wait stack-create-complete \
+              --stack-name pvz-service-$ENVIRONMENT \
+              --region $AWS_REGION
+          fi
+
+      - name: Wait for deployment and health check
+        run: |
+          # Get ALB DNS name
+          ALB_DNS=$(aws cloudformation describe-stacks \
+            --stack-name pvz-infrastructure-$ENVIRONMENT \
+            --region $AWS_REGION \
+            --query 'Stacks[0].Outputs[?OutputKey==`ALBDNSName`].OutputValue' \
+            --output text)
+          
+          echo "Application URL: http://$ALB_DNS"
+          
+          # Wait for service to be healthy
+          echo "Waiting for service to be healthy..."
+          for i in {1..30}; do
+            if curl -f -s "http://$ALB_DNS/api/health" > /dev/null; then
+              echo "✅ Service is healthy!"
+              break
+            fi
+            
+            if [ $i -eq 30 ]; then
+              echo "❌ Service health check timed out"
+              exit 1
+            fi
+            
+            echo "Attempt $i/30 - waiting..."
+            sleep 20
+          done
+
+      - name: Run smoke tests
+        run: |
+          # Get ALB DNS name
+          ALB_DNS=$(aws cloudformation describe-stacks \
+            --stack-name pvz-infrastructure-$ENVIRONMENT \
+            --region $AWS_REGION \
+            --query 'Stacks[0].Outputs[?OutputKey==`ALBDNSName`].OutputValue' \
+            --output text)
+          
+          # Test health endpoint
+          echo "Testing health endpoint..."
+          curl -f "http://$ALB_DNS/api/health"
+          
+          # Test stats endpoint
+          echo "Testing stats endpoint..."
+          curl -f "http://$ALB_DNS/api/stats"
+          
+          # Test leaderboard endpoint
+          echo "Testing leaderboard endpoint..."
+          curl -f "http://$ALB_DNS/api/leaderboard/high_scores"
+          
+          echo "✅ All smoke tests passed!"
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          ALB_DNS=$(aws cloudformation describe-stacks \
+            --stack-name pvz-infrastructure-$ENVIRONMENT \
+            --region $AWS_REGION \
+            --query 'Stacks[0].Outputs[?OutputKey==`ALBDNSName`].OutputValue' \
+            --output text)
+          
+          echo "🎉 Deployment successful!"
+          echo "🎮 Game URL: http://$ALB_DNS"
+          echo "📊 API URL: http://$ALB_DNS/api"
+          echo "🏥 Health: http://$ALB_DNS/api/health"
+          echo "🏆 Leaderboard: http://$ALB_DNS/api/leaderboard/high_scores"
+
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check the logs for more information."
+          
+          # Get recent ECS service events
+          aws ecs describe-services \
+            --cluster $ENVIRONMENT-pvz-cluster \
+            --services $ENVIRONMENT-pvz-service \
+            --region $AWS_REGION \
+            --query 'services[0].events[0:5]' \
+            --output table

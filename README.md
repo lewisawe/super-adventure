@@ -6,6 +6,25 @@ A multiplayer Plants vs Zombies tower defense game showcasing **Redis as a multi
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green?style=for-the-badge&logo=node.js)
 ![Socket.IO](https://img.shields.io/badge/Socket.IO-Real--time-blue?style=for-the-badge&logo=socket.io)
 
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 14+
+- Redis Server 6+
+- Modern web browser
+
+### One-Command Deployment
+
+```bash
+git clone <repository-url>
+cd plants-vs-zombies-redis
+./start.sh
+```
+
+**Game**: http://localhost:3001  
+**API**: http://localhost:3001/api  
+**Health**: http://localhost:3001/api/health
+
 ## 🎯 Beyond the Cache Challenge
 
 This project demonstrates Redis as a **powerful, multi-model platform** rather than just a cache:
@@ -77,46 +96,53 @@ This project demonstrates Redis as a **powerful, multi-model platform** rather t
 - **⚔️ Versus**: Competitive multiplayer
 - **🏃 Survival**: Endless wave challenge
 
-## 🚀 Quick Start
+### 🏆 **Real-Time Leaderboards**
+- **High Scores**: Overall game performance
+- **Zombies Killed**: Combat effectiveness
+- **Plants Planted**: Strategic deployment
+- **Waves Completed**: Survival achievements
+- **Games Won**: Victory statistics
 
-### Prerequisites
-- Node.js 14+
-- Redis Server 6+
-- Modern web browser
+### 🎲 **Smart Username System**
+- Auto-generated plant-themed usernames
+- Random name generator with 🎲 button
+- Names like: `GardenMaster`, `ZombieSlayer`, `EpicSunflower`
 
-### Installation
+## 🚀 Deployment Options
 
+### Local Development
 ```bash
-# Clone or navigate to the project
-cd /home/sierra/Desktop/projects/plantsVsZombies
-
-# Install dependencies
-npm install
-
-# Start the game (includes Redis check)
 ./start.sh
 ```
 
-### Manual Setup
-
+### Docker Deployment
 ```bash
-# Start Redis server
-redis-server --daemonize yes
+# Single container
+docker build -t pvz-redis .
+docker run -p 3001:3001 pvz-redis
 
-# Start the game server
-npm start
+# Multi-container (recommended)
+docker-compose up -d
 ```
 
-### Access the Game
+### Production Server
+```bash
+# Install dependencies
+sudo apt-get install nodejs npm redis-server
 
-- **Game**: http://localhost:3000
-- **API**: http://localhost:3000/api
-- **Stats**: http://localhost:3000/api/stats
+# Deploy application
+git clone <repository-url>
+cd plants-vs-zombies-redis
+npm install --production
+./start.sh
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
 ## 🎯 How to Play
 
 ### 1. **Join a Game**
-- Enter your player name
+- Enter your player name (or use suggested username)
 - Choose game mode (Cooperative/Versus/Survival)
 - Optionally enter a game ID to join existing game
 
@@ -184,13 +210,43 @@ counter:plants_planted -> Plant counter
 hll:unique_players -> Unique player count (HyperLogLog)
 ```
 
+## 📊 API Endpoints
+
+### Game Management
+```bash
+# Health check
+GET /api/health
+
+# Global statistics
+GET /api/stats
+
+# Active games
+GET /api/games/active
+```
+
+### Leaderboards
+```bash
+# Get leaderboard by category
+GET /api/leaderboard/high_scores
+GET /api/leaderboard/zombies_killed
+GET /api/leaderboard/plants_planted
+GET /api/leaderboard/waves_completed
+GET /api/leaderboard/games_won
+```
+
+### Player Data
+```bash
+# Get player data
+GET /api/player/{playerName}
+```
+
 ## 🧪 Demo & Testing
 
-### Run the Interactive Demo
+### Interactive Demo
 
 ```bash
 # Demonstrates all Redis multi-model capabilities
-./demo.js
+node demo.js
 ```
 
 The demo showcases:
@@ -200,22 +256,6 @@ The demo showcases:
 - ✅ Leaderboard management
 - ✅ Lane-based operations
 - ✅ Analytics and metrics
-
-### API Endpoints
-
-```bash
-# Get leaderboard
-curl http://localhost:3000/api/leaderboard/high_scores
-
-# Get player data
-curl http://localhost:3000/api/player/PlayerName
-
-# Get active games
-curl http://localhost:3000/api/games/active
-
-# Get global statistics
-curl http://localhost:3000/api/stats
-```
 
 ## 📊 Redis Performance Benefits
 
@@ -234,48 +274,6 @@ curl http://localhost:3000/api/stats
 - **AOF Logging**: Every game action persisted
 - **Replication**: Master-slave setup for high availability
 
-## 🎨 Customization
-
-### Adding New Plants
-
-```javascript
-// In config/game-config.js
-PLANTS: {
-    '🌸': {
-        name: 'Cherry Blossom',
-        cost: 200,
-        health: 300,
-        damage: 25,
-        fireRate: 1200,
-        special: 'charm' // Custom ability
-    }
-}
-```
-
-### Adding New Zombies
-
-```javascript
-// In config/game-config.js
-ZOMBIES: {
-    '🤖': {
-        name: 'Robot Zombie',
-        health: 800,
-        speed: 1.5,
-        damage: 150,
-        special: 'electromagnetic' // Custom ability
-    }
-}
-```
-
-### Custom Game Modes
-
-```javascript
-// In game-engine.js
-async createGame(hostPlayerId, gameMode = 'custom') {
-    // Implement custom game mode logic
-}
-```
-
 ## 🔧 Configuration
 
 ### Game Balance
@@ -286,33 +284,30 @@ Edit `config/game-config.js` to adjust:
 - Wave patterns and difficulty
 - Power-up effects and cooldowns
 
-### Redis Settings
+### Environment Variables
 
-```javascript
-// In redis-client.js
-const client = redis.createClient({
-    host: 'localhost',
-    port: 6379,
-    // Add custom Redis configuration
-});
+Copy `.env.example` to `.env` and configure:
+```bash
+NODE_ENV=production
+PORT=3001
+REDIS_HOST=localhost
+REDIS_PORT=6379
+MAX_PLAYERS_PER_GAME=4
 ```
 
 ## 📈 Monitoring & Analytics
 
-### Redis Monitoring
+### Health Monitoring
 
 ```bash
-# Monitor Redis operations
+# Application health
+curl http://localhost:3001/api/health
+
+# Redis monitoring
 redis-cli monitor
 
-# Check memory usage
-redis-cli info memory
-
-# View active connections
-redis-cli client list
-
-# Check key statistics
-redis-cli --scan --pattern "game:*" | wc -l
+# View logs
+npm run logs
 ```
 
 ### Game Analytics
@@ -324,38 +319,13 @@ The game automatically tracks:
 - Player progression and achievements
 - Game session duration and outcomes
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure Redis operations are efficient
-5. Update documentation
-6. Submit a pull request
-
-### Development Setup
-
-```bash
-# Install development dependencies
-npm install --dev
-
-# Run tests
-npm test
-
-# Start development server with auto-reload
-npm run dev
-```
-
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
 **Redis Connection Failed**
 ```bash
-# Check if Redis is running
 redis-cli ping
-
-# Start Redis if needed
 redis-server --daemonize yes
 ```
 
@@ -364,22 +334,25 @@ redis-server --daemonize yes
 - Ensure all dependencies are installed (`npm install`)
 - Verify Redis server is accessible
 
-**Multiplayer Issues**
-- Check firewall settings for port 3000
-- Ensure Socket.IO connections are not blocked
-- Verify Redis pub/sub is working (`redis-cli monitor`)
+**Performance Issues**
+```bash
+# Check Redis latency
+redis-cli --latency
 
-### Performance Optimization
+# Monitor memory usage
+redis-cli info memory
+```
 
-**High Memory Usage**
-- Adjust TTL values in Redis operations
-- Implement game state cleanup routines
-- Use Redis memory optimization settings
+See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive troubleshooting.
 
-**Slow Game Updates**
-- Check Redis latency (`redis-cli --latency`)
-- Optimize game loop frequency
-- Implement client-side prediction
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure Redis operations are efficient
+5. Update documentation
+6. Submit a pull request
 
 ## 📜 License
 

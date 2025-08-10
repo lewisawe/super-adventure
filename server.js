@@ -6,6 +6,7 @@ const path = require('path');
 
 const RedisClient = require('./redis-client');
 const GameEngine = require('./game-engine');
+const logger = require('./utils/logger');
 
 class PlantsVsZombiesServer {
     constructor() {
@@ -47,7 +48,7 @@ class PlantsVsZombiesServer {
                 const leaderboard = await this.redis.getLeaderboard(category, limit);
                 res.json(leaderboard);
             } catch (error) {
-                console.error('Leaderboard error:', error);
+                logger.error('Leaderboard error:', error);
                 res.status(500).json({ error: 'Failed to get leaderboard' });
             }
         });
@@ -62,7 +63,7 @@ class PlantsVsZombiesServer {
                     res.status(404).json({ error: 'Player not found' });
                 }
             } catch (error) {
-                console.error('Player data error:', error);
+                logger.error('Player data error:', error);
                 res.status(500).json({ error: 'Failed to get player data' });
             }
         });
@@ -72,7 +73,7 @@ class PlantsVsZombiesServer {
                 const activeGames = await this.redis.getActiveGames();
                 res.json(activeGames);
             } catch (error) {
-                console.error('Active games error:', error);
+                logger.error('Active games error:', error);
                 res.status(500).json({ error: 'Failed to get active games' });
             }
         });
@@ -88,7 +89,7 @@ class PlantsVsZombiesServer {
                 };
                 res.json(stats);
             } catch (error) {
-                console.error('Stats error:', error);
+                logger.error('Stats error:', error);
                 res.status(500).json({ error: 'Failed to get stats' });
             }
         });
@@ -99,31 +100,57 @@ class PlantsVsZombiesServer {
                 const { category } = req.params;
                 const limit = parseInt(req.query.limit) || 50;
                 
-                console.log(`🏆 Getting leaderboard for category: ${category}, limit: ${limit}`);
                 
                 const leaderboard = await this.redis.getLeaderboard(category, limit);
                 
-                console.log(`🏆 Leaderboard entries: ${leaderboard.length}`);
                 res.json(leaderboard);
                 
             } catch (error) {
-                console.error('Leaderboard error:', error);
+                logger.error('Leaderboard error:', error);
                 res.status(500).json({ error: 'Failed to get leaderboard' });
+            }
+        });
+
+        // Health check endpoint for monitoring
+        this.app.get('/api/health', async (req, res) => {
+            try {
+                // Check Redis connection
+                const redisStatus = await this.redis.client.ping();
+                
+                // Get basic stats
+                const stats = {
+                    status: 'healthy',
+                    timestamp: new Date().toISOString(),
+                    uptime: process.uptime(),
+                    memory: process.memoryUsage(),
+                    redis: redisStatus === 'PONG' ? 'connected' : 'disconnected',
+                    activeGames: this.gameEngine.games.size,
+                    connectedPlayers: this.connectedPlayers.size,
+                    version: require('./package.json').version
+                };
+                
+                res.json(stats);
+                
+            } catch (error) {
+                logger.error('Health check error:', error);
+                res.status(500).json({ 
+                    status: 'unhealthy', 
+                    error: error.message,
+                    timestamp: new Date().toISOString()
+                });
             }
         });
 
         // Get global statistics
         this.app.get('/api/stats', async (req, res) => {
             try {
-                console.log('📊 Getting global statistics');
                 
                 const stats = await this.redis.getGlobalStats();
                 
-                console.log('📊 Global stats:', stats);
                 res.json(stats);
                 
             } catch (error) {
-                console.error('Stats error:', error);
+                logger.error('Stats error:', error);
                 res.status(500).json({ error: 'Failed to get statistics' });
             }
         });
@@ -131,11 +158,9 @@ class PlantsVsZombiesServer {
         // Debug endpoint to see all games in Redis
         this.app.get('/api/debug/games', async (req, res) => {
             try {
-                console.log('🔍 DEBUG: Getting all games from Redis');
                 
                 // Get all game keys
                 const gameKeys = await this.redis.client.keys('game:*:state');
-                console.log('🔍 DEBUG: Found game keys:', gameKeys);
                 
                 const allGames = [];
                 
@@ -156,11 +181,10 @@ class PlantsVsZombiesServer {
                     }
                 }
                 
-                console.log('🔍 DEBUG: All games:', allGames);
                 res.json(allGames);
                 
             } catch (error) {
-                console.error('Debug games error:', error);
+                logger.error('Debug games error:', error);
                 res.status(500).json({ error: 'Failed to get debug games' });
             }
         });
@@ -169,17 +193,14 @@ class PlantsVsZombiesServer {
         this.app.get('/api/player/:playerId/games', async (req, res) => {
             try {
                 const { playerId } = req.params;
-                console.log('🔍 API: Getting games for player:', playerId);
                 
                 // Get all game keys directly (more reliable than active_games set)
                 const gameKeys = await this.redis.client.keys('game:*:state');
-                console.log('🔍 API: Found game keys:', gameKeys.length);
                 
                 const playerGames = [];
 
                 for (const key of gameKeys) {
                     const gameId = key.replace('game:', '').replace(':state', '');
-                    console.log('🔍 API: Checking game:', gameId);
                     
                     // Get the actual game state from Redis
                     const stateData = await this.redis.client.hGetAll(key);
@@ -187,18 +208,14 @@ class PlantsVsZombiesServer {
                     if (stateData && stateData.data) {
                         const gameState = JSON.parse(stateData.data);
                         const playerNames = Object.keys(gameState.players || {});
-                        console.log('🔍 API: Game state players:', playerNames);
                         
                         // Check if player is in this game (case-insensitive)
-                        console.log('🔍 API: Searching for player:', `"${playerId}"`, 'in players:', playerNames);
                         const matchingPlayer = playerNames.find(name => {
                             const nameMatch = name.toLowerCase() === playerId.toLowerCase();
-                            console.log('🔍 API: Comparing:', `"${name.toLowerCase()}"`, 'vs', `"${playerId.toLowerCase()}"`, '=', nameMatch);
                             return nameMatch;
                         });
                         
                         if (matchingPlayer) {
-                            console.log('✅ API: Player found in game:', gameId, 'as', matchingPlayer);
                             const gameDetails = {
                                 gameId: gameId,
                                 mode: gameState.mode || 'cooperative',
@@ -212,21 +229,18 @@ class PlantsVsZombiesServer {
                             };
                             playerGames.push(gameDetails);
                         } else {
-                            console.log('❌ API: Player not found in game:', gameId);
                         }
                     } else {
-                        console.log('❌ API: No state data for game:', gameId);
                     }
                 }
 
-                console.log('🔍 API: Final player games:', playerGames.length);
                 
                 // Sort by last activity (most recent first)
                 playerGames.sort((a, b) => b.lastActivity - a.lastActivity);
 
                 res.json(playerGames);
             } catch (error) {
-                console.error('Player games error:', error);
+                logger.error('Player games error:', error);
                 res.status(500).json({ error: 'Failed to get player games' });
             }
         });
@@ -235,7 +249,6 @@ class PlantsVsZombiesServer {
         this.app.post('/api/debug/reload-game/:gameId', async (req, res) => {
             try {
                 const { gameId } = req.params;
-                console.log(`🔄 Manual reload requested for game ${gameId}`);
                 
                 // Load game state from Redis
                 const gameState = await this.redis.getGameState(gameId);
@@ -252,7 +265,6 @@ class PlantsVsZombiesServer {
                     const waveManager = new WaveManager(this.gameEngine, gameState);
                     waveManager.startWave(gameState.currentWave - 1);
                     this.gameEngine.waveManagers.set(gameId, waveManager);
-                    console.log(`🌊 Restarted wave ${gameState.currentWave} for game ${gameId}`);
                 }
                 
                 // Start game loop if not already running
@@ -261,12 +273,11 @@ class PlantsVsZombiesServer {
                         try {
                             await this.gameEngine.updateGame(gameId);
                         } catch (error) {
-                            console.error(`Game loop error for ${gameId}:`, error.message);
+                            logger.error(`Game loop error for ${gameId}:`, error.message);
                         }
                     }, 1000 / 60); // 60 FPS
                     
                     this.gameEngine.gameLoops.set(gameId, interval);
-                    console.log(`🔄 Started game loop for ${gameId}`);
                 }
                 
                 res.json({ 
@@ -280,7 +291,7 @@ class PlantsVsZombiesServer {
                 });
                 
             } catch (error) {
-                console.error('Error reloading game:', error);
+                logger.error('Error reloading game:', error);
                 res.status(500).json({ error: 'Failed to reload game' });
             }
         });
@@ -288,20 +299,13 @@ class PlantsVsZombiesServer {
 
     setupSocketHandlers() {
         this.io.on('connection', (socket) => {
-            console.log(`🔌 Player connected: ${socket.id}`);
 
             // Player joins game
             socket.on('join_game', async (data) => {
                 try {
-                    console.log('🔍 Server received join_game data:', JSON.stringify(data, null, 2));
                     
                     const { playerName, gameId } = data;
                     
-                    console.log('🔍 Extracted values:');
-                    console.log('  - playerName:', `"${playerName}"`);
-                    console.log('  - gameId:', `"${gameId}"`);
-                    console.log('  - gameId type:', typeof gameId);
-                    console.log('  - gameId truthy:', !!gameId);
                     
                     if (!playerName || playerName.trim().length === 0) {
                         socket.emit('error', { message: 'Player name is required' });
@@ -326,17 +330,12 @@ class PlantsVsZombiesServer {
 
                     // Join or create game
                     let result;
-                    console.log('🎯 Deciding join vs create:');
-                    console.log('  - gameId provided:', !!gameId);
                     
                     if (gameId && await this.redis.keyExists(`game:${gameId}:state`)) {
-                        console.log('  - Game exists in Redis, attempting to join existing game');
                         result = await this.gameEngine.joinGame(gameId, playerName);
                     } else {
                         if (gameId) {
-                            console.log('  - GameId provided but game does not exist in Redis, creating new game');
                         } else {
-                            console.log('  - No gameId provided, creating new game');
                         }
                         const gameState = await this.gameEngine.createGame(playerName);
                         await this.redis.incrementCounter('total_games');
@@ -355,19 +354,15 @@ class PlantsVsZombiesServer {
                         playerData: playerData
                     };
                     
-                    console.log('💾 Storing player info for socket:', socket.id);
-                    console.log('💾 Player info:', playerInfo);
                     
                     this.connectedPlayers.set(socket.id, playerInfo);
                     
-                    console.log('✅ Player stored. Connected players count:', this.connectedPlayers.size);
 
                     // Join socket room
                     socket.join(result.gameId);
 
                     // Subscribe to Redis updates for this game
                     await this.redis.subscribeToGame(result.gameId, (update) => {
-                        console.log(`📡 Broadcasting ${update.type} to game ${result.gameId}`);
                         this.io.to(result.gameId).emit(update.type, update.data);
                     });
 
@@ -381,7 +376,6 @@ class PlantsVsZombiesServer {
 
                     // Handle auto-resume notification
                     if (result.wasResumed) {
-                        console.log(`🔄 Game auto-resumed by ${result.resumedBy}`);
                         this.io.to(result.gameId).emit('game_resumed', {
                             gameState: result.gameState,
                             resumedBy: result.resumedBy,
@@ -390,13 +384,11 @@ class PlantsVsZombiesServer {
                     }
 
                     if (result.isRejoining) {
-                        console.log(`🔄 ${result.playerId} rejoined game: ${result.gameId}`);
                     } else {
-                        console.log(`🎮 ${result.playerId} joined game: ${result.gameId}`);
                     }
 
                 } catch (error) {
-                    console.error('Join game error:', error);
+                    logger.error('Join game error:', error);
                     socket.emit('error', { message: error.message });
                 }
             });
@@ -411,10 +403,9 @@ class PlantsVsZombiesServer {
                     }
 
                     await this.gameEngine.startGame(player.gameId, player.playerId);
-                    console.log(`🚀 Game started: ${player.gameId}`);
 
                 } catch (error) {
-                    console.error('Start game error:', error);
+                    logger.error('Start game error:', error);
                     socket.emit('error', { message: error.message });
                 }
             });
@@ -422,14 +413,10 @@ class PlantsVsZombiesServer {
             // Pause game
             socket.on('pause_game', async () => {
                 try {
-                    console.log('🔍 Pause game request from socket:', socket.id);
-                    console.log('🔍 Connected players:', Array.from(this.connectedPlayers.keys()));
                     
                     const player = this.connectedPlayers.get(socket.id);
-                    console.log('🔍 Player found:', player);
                     
                     if (!player) {
-                        console.log('❌ Player not found in connectedPlayers map');
                         socket.emit('error', { message: 'Player not found' });
                         return;
                     }
@@ -441,12 +428,11 @@ class PlantsVsZombiesServer {
                             pausedBy: player.playerId,
                             message: `Game paused by ${player.playerId}`
                         });
-                        console.log(`⏸️ Game paused: ${player.gameId} by ${player.playerId}`);
                     } else {
                         socket.emit('error', { message: result.message });
                     }
                 } catch (error) {
-                    console.error('Pause game error:', error);
+                    logger.error('Pause game error:', error);
                     socket.emit('error', { message: error.message });
                 }
             });
@@ -467,12 +453,11 @@ class PlantsVsZombiesServer {
                             resumedBy: player.playerId,
                             message: `Game resumed by ${player.playerId}`
                         });
-                        console.log(`▶️ Game resumed: ${player.gameId} by ${player.playerId}`);
                     } else {
                         socket.emit('error', { message: result.message });
                     }
                 } catch (error) {
-                    console.error('Resume game error:', error);
+                    logger.error('Resume game error:', error);
                     socket.emit('error', { message: error.message });
                 }
             });
@@ -506,10 +491,9 @@ class PlantsVsZombiesServer {
                     });
 
                     socket.emit('plant_placed', result);
-                    console.log(`🌱 ${player.playerId} placed ${plantType} at (${row}, ${col})`);
 
                 } catch (error) {
-                    console.error('Place plant error:', error);
+                    logger.error('Place plant error:', error);
                     socket.emit('error', { message: error.message });
                 }
             });
@@ -537,10 +521,9 @@ class PlantsVsZombiesServer {
                     });
 
                     socket.emit('powerup_used', result);
-                    console.log(`⚡ ${player.playerId} used powerup: ${powerupType}`);
 
                 } catch (error) {
-                    console.error('Use powerup error:', error);
+                    logger.error('Use powerup error:', error);
                     socket.emit('error', { message: error.message });
                 }
             });
@@ -554,10 +537,9 @@ class PlantsVsZombiesServer {
                         await this.redis.removePlayerFromGame(player.gameId, player.playerId);
                         
                         this.connectedPlayers.delete(socket.id);
-                        console.log(`🔌 ${player.playerId} disconnected from game: ${player.gameId}`);
                     }
                 } catch (error) {
-                    console.error('Disconnect error:', error);
+                    logger.error('Disconnect error:', error);
                 }
             });
         });
@@ -570,34 +552,33 @@ class PlantsVsZombiesServer {
             if (!connected) {
                 throw new Error('Failed to connect to Redis');
             }
+            logger.info('Redis client connected successfully');
 
             // Start server
             this.server.listen(port, () => {
-                console.log(`🌻 Plants vs Zombies server running on port ${port}`);
-                console.log(`🎮 Game available at: http://localhost:${port}`);
-                console.log(`📊 API available at: http://localhost:${port}/api`);
+                logger.info(`Plants vs Zombies server running on port ${port}`);
+                logger.info(`Game available at: http://localhost:${port}`);
+                logger.info(`API available at: http://localhost:${port}/api`);
             });
             
             // Reload active games after server starts
             setTimeout(async () => {
-                console.log('🔄 Starting game reloading...');
                 try {
                     await this.gameEngine.reloadActiveGames();
-                    console.log('✅ Game reloading completed');
+                    logger.info('Active games reloaded successfully');
                 } catch (error) {
-                    console.error('❌ Error during game reloading:', error);
+                    logger.error('Error during game reloading', error);
                 }
             }, 1000);
 
             // Graceful shutdown
             process.on('SIGINT', async () => {
-                console.log('🛑 Shutting down server...');
                 await this.redis.disconnect();
                 process.exit(0);
             });
 
         } catch (error) {
-            console.error('❌ Server startup failed:', error);
+            logger.error('❌ Server startup failed:', error);
             process.exit(1);
         }
     }

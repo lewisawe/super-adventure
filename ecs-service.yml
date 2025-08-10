@@ -1,0 +1,286 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS Service for Plants vs Zombies - Redis Edition'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [development, staging, production]
+    Description: Deployment environment
+  
+  ImageURI:
+    Type: String
+    Description: ECR image URI for the application
+  
+  DesiredCount:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    MaxValue: 20
+    Description: Desired number of tasks
+
+Resources:
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${Environment}-pvz-task
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 512
+      Memory: 1024
+      ExecutionRoleArn: 
+        Fn::ImportValue: !Sub ${Environment}-pvz-execution-role-arn
+      TaskRoleArn: !Ref TaskRole
+      ContainerDefinitions:
+        - Name: pvz-app
+          Image: !Ref ImageURI
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3001
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: !Ref Environment
+            - Name: PORT
+              Value: "3001"
+            - Name: REDIS_HOST
+              Value: 
+                Fn::ImportValue: !Sub ${Environment}-pvz-redis-endpoint
+            - Name: REDIS_PORT
+              Value: "6379"
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: MAX_PLAYERS_PER_GAME
+              Value: "4"
+            - Name: GAME_TIMEOUT
+              Value: "3600000"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group:
+                Fn::ImportValue: !Sub ${Environment}-pvz-log-group-name
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - "curl -f http://localhost:3001/api/health || exit 1"
+            Interval: 30
+            Timeout: 10
+            Retries: 3
+            StartPeriod: 60
+          StopTimeout: 30
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: plants-vs-zombies
+
+  # Task Role for application permissions
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Environment}-pvz-task-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchMetrics
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+        - PolicyName: ParameterStore
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/pvz/${Environment}/*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub ${Environment}-pvz-service
+      Cluster:
+        Fn::ImportValue: !Sub ${Environment}-pvz-cluster-name
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - Fn::ImportValue: !Sub ${Environment}-pvz-ecs-sg
+          Subnets:
+            - Fn::ImportValue: !Sub ${Environment}-pvz-private-subnet-1
+            - Fn::ImportValue: !Sub ${Environment}-pvz-private-subnet-2
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - ContainerName: pvz-app
+          ContainerPort: 3001
+          TargetGroupArn:
+            Fn::ImportValue: !Sub ${Environment}-pvz-target-group-arn
+      HealthCheckGracePeriodSeconds: 120
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      ServiceTags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: plants-vs-zombies
+      EnableExecuteCommand: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: plants-vs-zombies
+
+  # Auto Scaling Target
+  ServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 10
+      MinCapacity: 1
+      ResourceId: !Sub 
+        - service/${ClusterName}/${ServiceName}
+        - ClusterName: 
+            Fn::ImportValue: !Sub ${Environment}-pvz-cluster-name
+          ServiceName: !Sub ${Environment}-pvz-service
+      RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  # CPU-based Auto Scaling Policy
+  ServiceScalingPolicyCPU:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${Environment}-pvz-cpu-scaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ServiceScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70.0
+        ScaleOutCooldown: 300
+        ScaleInCooldown: 300
+
+  # Memory-based Auto Scaling Policy
+  ServiceScalingPolicyMemory:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${Environment}-pvz-memory-scaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ServiceScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageMemoryUtilization
+        TargetValue: 80.0
+        ScaleOutCooldown: 300
+        ScaleInCooldown: 300
+
+  # CloudWatch Alarms
+  HighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-pvz-high-cpu
+      AlarmDescription: High CPU utilization for Plants vs Zombies service
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub ${Environment}-pvz-service
+        - Name: ClusterName
+          Value: 
+            Fn::ImportValue: !Sub ${Environment}-pvz-cluster-name
+      TreatMissingData: notBreaching
+
+  HighMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-pvz-high-memory
+      AlarmDescription: High memory utilization for Plants vs Zombies service
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 90
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub ${Environment}-pvz-service
+        - Name: ClusterName
+          Value: 
+            Fn::ImportValue: !Sub ${Environment}-pvz-cluster-name
+      TreatMissingData: notBreaching
+
+  ServiceUnhealthyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${Environment}-pvz-service-unhealthy
+      AlarmDescription: Plants vs Zombies service has unhealthy tasks
+      MetricName: RunningTaskCount
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub ${Environment}-pvz-service
+        - Name: ClusterName
+          Value: 
+            Fn::ImportValue: !Sub ${Environment}-pvz-cluster-name
+      TreatMissingData: breaching
+
+Outputs:
+  ServiceName:
+    Description: ECS Service name
+    Value: !Sub ${Environment}-pvz-service
+    Export:
+      Name: !Sub ${Environment}-pvz-service-name
+
+  TaskDefinitionArn:
+    Description: Task Definition ARN
+    Value: !Ref TaskDefinition
+    Export:
+      Name: !Sub ${Environment}-pvz-task-definition-arn
+
+  ServiceArn:
+    Description: ECS Service ARN
+    Value: !Ref ECSService
+    Export:
+      Name: !Sub ${Environment}-pvz-service-arn
+
+  TaskRoleArn:
+    Description: Task Role ARN
+    Value: !GetAtt TaskRole.Arn
+    Export:
+      Name: !Sub ${Environment}-pvz-task-role-arn

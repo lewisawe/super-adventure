@@ -1,0 +1,16 @@
+{
+  "cluster": "production-pvz-cluster",
+  "service": "production-pvz-service",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "subnet-013225029a16aeecf",  // Public subnet 1
+        "subnet-05f61227960aafb64"   // Public subnet 2
+      ],
+      "securityGroups": [
+        "sg-02395245b58f2864d"
+      ],
+      "assignPublicIp": "ENABLED"  // This is the key change
+    }
+  }
+}

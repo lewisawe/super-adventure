@@ -42,7 +42,6 @@ class PlantsVsZombiesClient {
     }
 
     async init() {
-        console.log('🌻 Initializing Plants vs Zombies client...');
         
         try {
             // Show loading screen
@@ -66,13 +65,9 @@ class PlantsVsZombiesClient {
             // Check initial state of inputs and clear game ID
             const playerNameInput = document.getElementById('playerNameInput');
             const gameIdInput = document.getElementById('gameIdInput');
-            console.log('🔍 Initial input states:');
-            console.log('  - Player name:', `"${playerNameInput.value}"`);
-            console.log('  - Game ID:', `"${gameIdInput.value}"`);
             
             // Always clear game ID on page load to prevent pre-filling issues
             if (gameIdInput.value) {
-                console.log('🧹 Clearing pre-filled game ID:', gameIdInput.value);
                 gameIdInput.value = '';
             }
             
@@ -80,7 +75,6 @@ class PlantsVsZombiesClient {
             this.hideLoadingScreen();
             this.showMainMenu();
             
-            console.log('✅ Client initialization complete');
             
         } catch (error) {
             console.error('❌ Client initialization failed:', error);
@@ -94,14 +88,12 @@ class PlantsVsZombiesClient {
 
     async initializeAudio() {
         try {
-            console.log('🎵 Initializing audio system...');
             
             // Initialize audio manager on first user interaction
             document.addEventListener('click', async () => {
                 if (!window.audioManager.isInitialized) {
                     await window.audioManager.init();
                     await window.audioManager.resume();
-                    console.log('🎵 Audio system ready');
                 }
             }, { once: true });
             
@@ -110,12 +102,11 @@ class PlantsVsZombiesClient {
                 if (!window.audioManager.isInitialized) {
                     await window.audioManager.init();
                     await window.audioManager.resume();
-                    console.log('🎵 Audio system ready');
                 }
             }, { once: true });
             
         } catch (error) {
-            console.warn('🔇 Audio initialization failed:', error);
+            logger.warn('🔇 Audio initialization failed:', error);
         }
     }
 
@@ -128,14 +119,12 @@ class PlantsVsZombiesClient {
             this.socket = io();
             
             this.socket.on('connect', () => {
-                console.log('🔌 Connected to server:', this.socket.id);
                 this.isConnected = true;
                 this.updateConnectionStatus(true);
                 resolve();
             });
             
             this.socket.on('disconnect', () => {
-                console.log('🔌 Disconnected from server');
                 this.isConnected = false;
                 this.updateConnectionStatus(false);
                 this.showNotification('Disconnected from server', 'error');
@@ -162,12 +151,10 @@ class PlantsVsZombiesClient {
     setupSocketEventHandlers() {
         // Game lifecycle events
         this.socket.on('game_joined', (data) => {
-            console.log('🎮 Joined game:', data);
             this.handleGameJoined(data);
         });
         
         this.socket.on('game_started', (data) => {
-            console.log('🚀 Game started:', data);
             this.handleGameStarted(data);
             // Start background music
             setTimeout(() => {
@@ -180,43 +167,36 @@ class PlantsVsZombiesClient {
         });
         
         this.socket.on('game_ended', (data) => {
-            console.log('🏁 Game ended:', data);
             this.handleGameEnded(data);
         });
         
         // Player events
         this.socket.on('player_joined', (data) => {
-            console.log('👤 Player joined:', data);
             this.handlePlayerJoined(data);
         });
         
         // Plant events
         this.socket.on('plant_placed', (data) => {
-            console.log('🌱 Plant placed:', data);
             this.handlePlantPlaced(data);
             window.audioManager.playSound('plantPlace', 0.6);
         });
         
         // Wave events
         this.socket.on('wave_started', (data) => {
-            console.log('🌊 Wave started:', data);
             this.handleWaveStarted(data);
         });
         
         // Powerup events
         this.socket.on('powerup_used', (data) => {
-            console.log('⚡ Powerup used:', data);
             this.handlePowerupUsed(data);
         });
         
         // Game pause/resume events
         this.socket.on('game_paused', (data) => {
-            console.log('⏸️ Game paused:', data);
             this.handleGamePaused(data);
         });
 
         this.socket.on('game_resumed', (data) => {
-            console.log('▶️ Game resumed:', data);
             this.handleGameResumed(data);
         });
 
@@ -392,13 +372,11 @@ class PlantsVsZombiesClient {
         let inputTimeout;
         document.getElementById('playerNameInput').addEventListener('input', (e) => {
             const playerName = e.target.value.trim();
-            console.log('📝 Player name input changed:', playerName);
             
             // Clear any previous game ID to ensure fresh start for new games
             const gameIdInput = document.getElementById('gameIdInput');
             const oldGameId = gameIdInput.value;
             gameIdInput.value = '';
-            console.log('🧹 Cleared game ID:', oldGameId, '→', gameIdInput.value);
             
             // Clear previous timeout
             if (inputTimeout) {
@@ -408,10 +386,8 @@ class PlantsVsZombiesClient {
             // Debounce the API call
             inputTimeout = setTimeout(() => {
                 if (playerName.length >= 2) {
-                    console.log('🔍 Loading games for:', playerName);
                     this.loadPlayerActiveGames(playerName);
                 } else {
-                    console.log('❌ Name too short, hiding games');
                     this.hideActiveGames();
                 }
             }, 500); // Wait 500ms after user stops typing
@@ -482,7 +458,6 @@ class PlantsVsZombiesClient {
             }
         }
         
-        console.log('🎯 Game board initialized');
     }
 
     // ==========================================
@@ -494,7 +469,6 @@ class PlantsVsZombiesClient {
         const gameId = document.getElementById('gameIdInput').value.trim();
         const gameMode = document.querySelector('input[name="gameMode"]:checked').value;
         
-        console.log('🎯 joinGame called with:', { playerName, gameId, gameMode });
         
         if (!playerName) {
             this.showNotification('Please enter your name', 'warning');
@@ -703,11 +677,6 @@ class PlantsVsZombiesClient {
         const isRejoining = data.isRejoining;
         
         if (isRejoining && isGameStarted) {
-            console.log('🔄 Rejoining started game - skipping start button');
-            console.log('🎮 Game state on rejoin:', this.gameState);
-            console.log('🌱 Plants in game state:', this.gameState.plants);
-            console.log('🌊 Current wave:', this.gameState.currentWave);
-            console.log('☀️ Player sun:', this.gameState.players[this.playerId]?.sun);
             
             // Hide start button and show appropriate controls
             document.getElementById('startGameBtn').style.display = 'none';
@@ -719,14 +688,12 @@ class PlantsVsZombiesClient {
             this.gameStarted = true;
             
             // Force update the game board with restored state
-            console.log('🔄 Forcing game board update...');
             this.updateGameBoard();
             this.updateGameStats();
             this.updatePlayersList();
             
             // If game is paused, automatically resume it
             if (this.gameState.status === 'paused') {
-                console.log('⏸️ Game is paused, automatically resuming...');
                 this.socket.emit('resume_game');
             }
             
@@ -735,7 +702,6 @@ class PlantsVsZombiesClient {
             
             this.showNotification(`Resumed game: ${data.gameId}`, 'success');
         } else {
-            console.log('🎮 Joining new game - showing start button');
             // Make start button extra prominent for new games
             const startBtn = document.getElementById('startGameBtn');
             startBtn.classList.add('ready-to-start');
@@ -1017,11 +983,9 @@ class PlantsVsZombiesClient {
 
     updatePlants() {
         if (!this.gameState.plants) {
-            console.log('❌ No plants in game state');
             return;
         }
         
-        console.log('🌱 Updating plants, found:', this.gameState.plants.length, 'plants');
         
         // Get existing plant elements
         const existingPlants = new Map();
@@ -1813,7 +1777,6 @@ class PlantsVsZombiesClient {
 
     async loadPlayerActiveGames(playerName) {
         try {
-            console.log('🔍 Loading active games for player:', playerName);
             
             // Show loading state
             const resumeBtn = document.getElementById('resumeGameBtn');
@@ -1824,7 +1787,6 @@ class PlantsVsZombiesClient {
             const response = await fetch(`/api/player/${encodeURIComponent(playerName)}/games`);
             const games = await response.json();
             
-            console.log('📋 Found games:', games);
             
             // Restore button state
             resumeBtn.textContent = originalText;
@@ -1846,13 +1808,11 @@ class PlantsVsZombiesClient {
     }
 
     displayActiveGames(games) {
-        console.log('🎮 Displaying active games:', games);
         const resumeBtn = document.getElementById('resumeGameBtn');
         const activeGamesList = document.getElementById('activeGamesList');
         const container = document.getElementById('activeGamesContainer');
         
         if (games.length === 0) {
-            console.log('❌ No games found, showing helpful message');
             
             // Show the list but with a helpful message
             resumeBtn.style.display = 'block';
@@ -1871,7 +1831,6 @@ class PlantsVsZombiesClient {
             return;
         }
         
-        console.log('✅ Showing resume functionality for', games.length, 'games');
         
         // Show resume functionality
         resumeBtn.style.display = 'block';
@@ -1882,7 +1841,6 @@ class PlantsVsZombiesClient {
         
         // Add each game with enhanced information
         games.forEach((game, index) => {
-            console.log('🎯 Adding game card for:', game.gameId);
             const gameItem = document.createElement('div');
             gameItem.className = 'active-game-item';
             gameItem.dataset.gameId = game.gameId;
@@ -1937,8 +1895,6 @@ class PlantsVsZombiesClient {
             // Add click event listener with proper binding
             const clickHandler = ((gameId) => {
                 return (event) => {
-                    console.log('🖱️ Game card clicked!');
-                    console.log('🔄 Resuming game:', gameId);
                     event.preventDefault();
                     event.stopPropagation();
                     try {
@@ -1950,18 +1906,13 @@ class PlantsVsZombiesClient {
             })(game.gameId);
             
             gameItem.addEventListener('click', clickHandler);
-            console.log('🎯 Click listener added for game:', game.gameId);
             
             container.appendChild(gameItem);
             
             // Verify the element was added
-            console.log('✅ Game card added to DOM:', gameItem);
-            console.log('📍 Container children count:', container.children.length);
             
             // Also add onclick as backup
             gameItem.onclick = (event) => {
-                console.log('🖱️ Game card onclick triggered!');
-                console.log('🔄 Resuming game via onclick:', game.gameId);
                 event.preventDefault();
                 this.resumeGame(game.gameId);
             };
@@ -2131,7 +2082,6 @@ class PlantsVsZombiesClient {
             input.style.fontStyle = 'italic';
             input.style.color = '#FFD700';
             
-            console.log(`💡 Suggested username: ${suggestedName}`);
         }
     }
 
@@ -2203,7 +2153,6 @@ class PlantsVsZombiesClient {
             // Show notification
             this.showNotification(`Generated username: ${newName}`, 'success');
             
-            console.log(`🎲 Generated new username: ${newName}`);
         });
 
         inputGroup.appendChild(suggestionBtn);
@@ -2230,7 +2179,6 @@ class PlantsVsZombiesClient {
     }
 
     showLeaderboard() {
-        console.log('🏆 Showing leaderboard screen');
         this.hideAllScreens();
         document.getElementById('leaderboardScreen').style.display = 'block';
         this.loadLeaderboard('high_scores');
@@ -2238,7 +2186,6 @@ class PlantsVsZombiesClient {
     }
 
     async loadLeaderboard(category = 'high_scores') {
-        console.log('🏆 Loading leaderboard for category:', category);
         
         // Show loading state
         document.getElementById('leaderboardLoading').style.display = 'block';
@@ -2249,7 +2196,6 @@ class PlantsVsZombiesClient {
             const response = await fetch(`/api/leaderboard/${category}`);
             const data = await response.json();
             
-            console.log('🏆 Leaderboard data:', data);
             
             if (data.length === 0) {
                 this.showEmptyLeaderboard();
@@ -2264,7 +2210,6 @@ class PlantsVsZombiesClient {
     }
 
     displayLeaderboard(entries, category) {
-        console.log('🏆 Displaying leaderboard entries:', entries.length);
         
         const listContainer = document.getElementById('leaderboardList');
         listContainer.innerHTML = '';
@@ -2369,13 +2314,11 @@ class PlantsVsZombiesClient {
     }
 
     async loadGlobalStats() {
-        console.log('📊 Loading global statistics');
         
         try {
             const response = await fetch('/api/stats');
             const stats = await response.json();
             
-            console.log('📊 Global stats:', stats);
             
             // Update stat displays
             document.getElementById('totalGamesPlayed').textContent = 
@@ -2441,12 +2384,10 @@ class PlantsVsZombiesClient {
 
     async loadSavedGames(playerName) {
         try {
-            console.log('🔍 Loading saved games for player:', playerName);
             
             const response = await fetch(`/api/player/${encodeURIComponent(playerName)}/games`);
             const games = await response.json();
             
-            console.log('📋 Found saved games:', games);
             this.displaySavedGames(games);
             
         } catch (error) {
@@ -2569,7 +2510,6 @@ class PlantsVsZombiesClient {
         }
         
         try {
-            // TODO: Implement delete saved game API
             this.showNotification('Delete functionality coming soon!', 'info');
             
         } catch (error) {
@@ -2579,24 +2519,18 @@ class PlantsVsZombiesClient {
     }
 
     resumeGame(gameId) {
-        console.log('🎯 resumeGame called with gameId:', gameId);
         const playerName = document.getElementById('playerNameInput').value.trim();
-        console.log('👤 Player name:', playerName);
         
         if (!playerName) {
-            console.log('❌ No player name, showing notification');
             this.showNotification('Please enter your player name first', 'error');
             return;
         }
         
-        console.log('✅ Setting game ID and joining game');
         // Set the game ID input and join the game
         document.getElementById('gameIdInput').value = gameId;
-        console.log('🎮 Game ID set to:', gameId);
         
         try {
             this.joinGame();
-            console.log('🚀 joinGame() called successfully');
         } catch (error) {
             console.error('❌ Error calling joinGame():', error);
         }

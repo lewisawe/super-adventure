@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const GAME_CONFIG = require('./config/game-config');
+const logger = require('./utils/logger');
 
 class WaveManager {
     constructor(gameEngine, gameState) {
@@ -27,8 +28,6 @@ class WaveManager {
         const wave = GAME_CONFIG.WAVES[waveIndex];
         this.waveEvents = [...wave.timeline];
         
-        console.log(`🌊 Wave Manager: Starting wave ${waveIndex + 1}`);
-        console.log(`📋 Timeline events: ${this.waveEvents.length}`);
         
         return true;
     }
@@ -63,17 +62,13 @@ class WaveManager {
         // Check if horde should end
         if (this.hordeActive && now >= this.hordeEndTime) {
             this.hordeActive = false;
-            console.log('🌊 Horde event ended');
         }
     }
 
     processEvent(event) {
-        console.log(`🎯 Processing wave event: ${event.event}`);
-        console.log(`🎯 Event data:`, JSON.stringify(event, null, 2));
         
         switch (event.event) {
             case 'spawn':
-                console.log(`🎯 Calling spawnZombies with:`, event.zombies);
                 this.spawnZombies(event.zombies);
                 break;
                 
@@ -88,12 +83,9 @@ class WaveManager {
     }
 
     spawnZombies(zombieGroups) {
-        console.log(`🧟 spawnZombies called with ${zombieGroups.length} groups`);
         zombieGroups.forEach((group, index) => {
-            console.log(`  Group ${index}: ${group.count}x ${group.type} in lanes ${group.lanes}`);
             for (let i = 0; i < group.count; i++) {
                 const lane = this.selectLane(group.lanes);
-                console.log(`    Spawning ${group.type} in lane ${lane}`);
                 this.gameEngine.spawnZombie(this.gameState, group.type, lane);
             }
         });
@@ -105,7 +97,6 @@ class WaveManager {
         this.hordeSpawnRate = spawnRate;
         this.lastHordeSpawn = Date.now();
         
-        console.log(`🔥 Horde started! Duration: ${duration}ms, Spawn rate: ${spawnRate}ms`);
     }
 
     spawnHordeZombie() {
@@ -203,11 +194,9 @@ class PlantsVsZombiesEngine {
     // ==========================================
 
     async reloadActiveGames() {
-        console.log('🔄 Reloading active games from Redis...');
         
         try {
             const activeGameIds = await this.redis.client.sMembers('active_games');
-            console.log(`Found ${activeGameIds.length} active games`);
             
             for (const gameId of activeGameIds) {
                 const gameInfo = await this.redis.client.hGetAll(`game:${gameId}:info`);
@@ -216,7 +205,6 @@ class PlantsVsZombiesEngine {
                     const gameState = await this.redis.getGameState(gameId);
                     
                     if (gameState) {
-                        console.log(`🔄 Reloading game ${gameId}`);
                         
                         // Add to in-memory games
                         this.games.set(gameId, gameState);
@@ -226,7 +214,6 @@ class PlantsVsZombiesEngine {
                             const waveManager = new WaveManager(this, gameState);
                             waveManager.startWave(gameState.currentWave - 1);
                             this.waveManagers.set(gameId, waveManager);
-                            console.log(`🌊 Restarted wave ${gameState.currentWave} for game ${gameId}`);
                         }
                         
                         // Start game loop
@@ -235,22 +222,19 @@ class PlantsVsZombiesEngine {
                                 try {
                                     await this.updateGame(gameId);
                                 } catch (error) {
-                                    console.error(`Game loop error for ${gameId}:`, error);
+                                    logger.error(`Game loop error for ${gameId}:`, error);
                                 }
                             }, 1000 / this.GAMEPLAY.GAME_SPEED);
                             
                             this.gameLoops.set(gameId, interval);
-                            console.log(`🔄 Started game loop for ${gameId}`);
                         }
                         
-                        console.log(`✅ Successfully reloaded game ${gameId} (${gameState.zombies.length} zombies, wave ${gameState.currentWave})`);
                     }
                 }
             }
             
-            console.log('🎉 Active games reloading complete!');
         } catch (error) {
-            console.error('❌ Error reloading active games:', error);
+            logger.error('❌ Error reloading active games:', error);
         }
     }
 
@@ -260,7 +244,6 @@ class PlantsVsZombiesEngine {
 
     async updatePlayerStats(gameId, playerId, stats) {
         try {
-            console.log(`📊 Updating player stats for ${playerId}:`, stats);
             
             // Add unique player to tracking
             await this.redis.addUniquePlayer(playerId);
@@ -289,20 +272,17 @@ class PlantsVsZombiesEngine {
                 await this.redis.incrementCounter('games_won', 1);
             }
             
-            console.log(`✅ Player stats updated for ${playerId}`);
             
         } catch (error) {
-            console.error('Error updating player stats:', error);
+            logger.error('Error updating player stats:', error);
         }
     }
 
     async endGame(gameId, reason = 'completed') {
         try {
-            console.log(`🏁 Ending game ${gameId}, reason: ${reason}`);
             
             const gameState = this.games.get(gameId);
             if (!gameState) {
-                console.log(`❌ Game ${gameId} not found for ending`);
                 return;
             }
             
@@ -331,10 +311,9 @@ class PlantsVsZombiesEngine {
             // Clean up game resources
             this.cleanupGame(gameId);
             
-            console.log(`✅ Game ${gameId} ended successfully`);
             
         } catch (error) {
-            console.error(`Error ending game ${gameId}:`, error);
+            logger.error(`Error ending game ${gameId}:`, error);
         }
     }
 
@@ -358,10 +337,9 @@ class PlantsVsZombiesEngine {
             // Remove from active games
             this.games.delete(gameId);
             
-            console.log(`🧹 Cleaned up game ${gameId}`);
             
         } catch (error) {
-            console.error(`Error cleaning up game ${gameId}:`, error);
+            logger.error(`Error cleaning up game ${gameId}:`, error);
         }
     }
 
@@ -432,7 +410,6 @@ class PlantsVsZombiesEngine {
         });
         await this.redis.addPlayerToGame(gameId, hostPlayerId);
 
-        console.log(`🎮 Created Plants vs Zombies game: ${gameId}`);
         return gameState;
     }
 
@@ -448,12 +425,8 @@ class PlantsVsZombiesEngine {
         }
 
         // Check if player is already in the game (resuming)
-        console.log('🔍 Checking if player is rejoining...');
-        console.log('🔍 Game players:', Object.keys(gameState.players || {}));
-        console.log('🔍 Looking for player:', playerId);
         
         const isRejoining = gameState.players && gameState.players[playerId];
-        console.log('🔍 Direct match (case-sensitive):', !!isRejoining);
         
         // Check for case-insensitive match
         const playerNames = Object.keys(gameState.players || {});
@@ -461,25 +434,17 @@ class PlantsVsZombiesEngine {
             name.toLowerCase() === playerId.toLowerCase()
         );
         const isCaseInsensitiveRejoining = !!matchingPlayerName;
-        console.log('🔍 Case-insensitive match:', isCaseInsensitiveRejoining, 'as', matchingPlayerName);
         
         if (gameState.status !== 'waiting' && !isRejoining && !isCaseInsensitiveRejoining) {
-            console.log('❌ Game in progress and player not rejoining');
             throw new Error('Game already in progress');
         }
 
         // If rejoining, just return the current game state
         if (isRejoining || isCaseInsensitiveRejoining) {
             const actualPlayerName = matchingPlayerName || playerId;
-            console.log(`🔄 Player ${playerId} rejoining game ${gameId} as ${actualPlayerName}`);
-            console.log(`🔍 Game status: ${gameState.status}`);
-            console.log(`🔍 Current wave: ${gameState.currentWave}`);
-            console.log(`🔍 Wave manager exists: ${this.waveManagers.has(gameId)}`);
-            console.log(`🔍 Game loop exists: ${this.gameLoops.has(gameId)}`);
             
             // Ensure wave manager is running for this game
             if (!this.waveManagers.has(gameId) && (gameState.status === 'playing' || gameState.status === 'paused')) {
-                console.log(`🌊 Restarting wave manager for rejoined game ${gameId} (status: ${gameState.status})`);
                 const waveManager = new WaveManager(this, gameState);
                 this.waveManagers.set(gameId, waveManager);
                 
@@ -491,12 +456,11 @@ class PlantsVsZombiesEngine {
             
             // Ensure game loop is running for this game
             if (!this.gameLoops.has(gameId) && (gameState.status === 'playing' || gameState.status === 'paused')) {
-                console.log(`🔄 Restarting game loop for rejoined game ${gameId} (status: ${gameState.status})`);
                 const interval = setInterval(async () => {
                     try {
                         await this.updateGame(gameId);
                     } catch (error) {
-                        console.error(`Game loop error for ${gameId}:`, error);
+                        logger.error(`Game loop error for ${gameId}:`, error);
                     }
                 }, 1000 / this.GAMEPLAY.GAME_SPEED);
                 
@@ -506,7 +470,6 @@ class PlantsVsZombiesEngine {
             // Auto-resume paused games when player rejoins
             let wasResumed = false;
             if (gameState.status === 'paused') {
-                console.log(`🔄 Auto-resuming paused game ${gameId} for rejoining player`);
                 gameState.status = 'playing';
                 gameState.lastUpdate = Date.now();
                 wasResumed = true;
@@ -554,7 +517,6 @@ class PlantsVsZombiesEngine {
             players: gameState.players
         });
 
-        console.log(`👤 ${playerId} joined game: ${gameId}`);
         return {
             gameId: gameId,
             playerId: playerId,
@@ -598,7 +560,6 @@ class PlantsVsZombiesEngine {
             message: 'The zombies are coming! Prepare your defenses!'
         });
 
-        console.log(`🚀 Game started: ${gameId}`);
         return gameState;
     }
 
@@ -641,7 +602,6 @@ class PlantsVsZombiesEngine {
 
         await this.redis.saveGameState(gameId, gameState);
 
-        console.log(`⏸️ Game ${gameId} paused by ${playerId}`);
         return { success: true, gameState };
     }
 
@@ -692,7 +652,6 @@ class PlantsVsZombiesEngine {
 
         await this.redis.saveGameState(gameId, gameState);
 
-        console.log(`▶️ Game ${gameId} resumed by ${playerId} (paused for ${pauseDuration}ms)`);
         return { success: true, gameState };
     }
 
@@ -840,13 +799,12 @@ class PlantsVsZombiesEngine {
             try {
                 await this.updateGame(gameId);
             } catch (error) {
-                console.error(`Game loop error for ${gameId}:`, error);
+                logger.error(`Game loop error for ${gameId}:`, error);
                 this.stopGameLoop(gameId);
             }
         }, 1000 / this.GAMEPLAY.GAME_SPEED); // 60 FPS
 
         this.gameLoops.set(gameId, interval);
-        console.log(`🔄 Started game loop for ${gameId}`);
     }
 
     stopGameLoop(gameId) {
@@ -854,7 +812,6 @@ class PlantsVsZombiesEngine {
         if (interval) {
             clearInterval(interval);
             this.gameLoops.delete(gameId);
-            console.log(`⏹️ Stopped game loop for ${gameId}`);
         }
     }
 
@@ -865,7 +822,6 @@ class PlantsVsZombiesEngine {
         if (!gameState) {
             gameState = await this.redis.getGameState(gameId);
             if (gameState && (gameState.status === 'playing' || gameState.status === 'paused')) {
-                console.log(`🔄 Reloading game ${gameId} into memory`);
                 this.games.set(gameId, gameState);
                 
                 // Recreate wave manager if wave is in progress
@@ -1018,7 +974,6 @@ class PlantsVsZombiesEngine {
         // Add to lane tracking
         this.redis.addZombieToLane(gameState.id, row, zombie);
         
-        console.log(`🧟 Spawned ${zombieType} in lane ${row}`);
     }
 
     async publishWaveStarted(gameId, waveIndex) {
@@ -1031,7 +986,6 @@ class PlantsVsZombiesEngine {
             isFinalWave: wave.isFinalWave || false
         });
         
-        console.log(`🌊 Published wave started: ${waveIndex + 1}`);
     }
 
     broadcastMessage(gameId, message) {
@@ -1053,9 +1007,6 @@ class PlantsVsZombiesEngine {
         const wave = this.WAVES[gameState.currentWave];
         gameState.waveInProgress = true;
         gameState.waveStartTime = Date.now();
-
-        console.log(`🌊 Starting wave ${gameState.currentWave + 1}: ${wave.message}`);
-
         // Spawn zombies according to wave pattern
         for (const zombieGroup of wave.zombies) {
             setTimeout(() => {
@@ -1175,7 +1126,6 @@ class PlantsVsZombiesEngine {
                 
                 // Debug: Log speed override (only occasionally to avoid spam)
                 if (Math.random() < 0.001) { // 0.1% chance to log
-                    console.log(`🧊 ${zombie.type} at glacial pace: ${oldX.toFixed(3)} → ${zombie.x.toFixed(3)} (speed: ${zombieSpeed} px/s, type: ${zombie.name || zombie.type})`);
                 }
                 zombie.col = Math.floor(zombie.x);
                 
@@ -1302,7 +1252,6 @@ class PlantsVsZombiesEngine {
         await this.redis.removeZombieFromLane(gameState.id, zombie.row, zombie.id);
         
         zombie.health = 0;
-        console.log(`💀 Zombie killed in game ${gameState.id}, players earned ${zombie.points || 100} points`);
     }
 
     async updatePlayerLeaderboardStats(gameId, playerId, stats) {
@@ -1332,7 +1281,7 @@ class PlantsVsZombiesEngine {
             }
             
         } catch (error) {
-            console.error('Error updating leaderboard stats:', error);
+            logger.error('Error updating leaderboard stats:', error);
         }
     }
 
@@ -1449,7 +1398,6 @@ class PlantsVsZombiesEngine {
                 }
             });
             
-            console.log(`🚜 Lawn mower activated in row ${row}`);
         }
     }
 
@@ -1616,7 +1564,6 @@ class PlantsVsZombiesEngine {
             gameStats: gameState.stats
         });
         
-        console.log(`🏁 Game ${gameState.id} ended with result: ${result}`);
     }
 
     calculateFinalScore(gameState, player) {

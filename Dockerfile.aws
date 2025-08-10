@@ -1,0 +1,61 @@
+# Plants vs Zombies - Redis Edition
+# AWS Production Dockerfile
+
+FROM node:18-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    curl \
+    dumb-init \
+    && rm -rf /var/cache/apk/*
+
+# Create app user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install production dependencies
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# Copy application code
+COPY --chown=nodejs:nodejs . .
+
+# Create necessary directories with proper permissions
+RUN mkdir -p logs backups && \
+    chown -R nodejs:nodejs logs backups
+
+# Remove development files
+RUN rm -rf \
+    debug-backup \
+    remove-debug.sh \
+    *.md \
+    .git* \
+    docker-compose.yml \
+    Dockerfile \
+    deploy-*.sh
+
+# Set proper permissions
+RUN chmod +x start.sh && \
+    chmod 644 *.js
+
+# Switch to non-root user
+USER nodejs
+
+# Expose port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3001/api/health || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["node", "server.js"]

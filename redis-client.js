@@ -1,4 +1,5 @@
 const redis = require('redis');
+const logger = require('./utils/logger');
 
 class RedisMultiModelClient {
     constructor() {
@@ -9,36 +10,51 @@ class RedisMultiModelClient {
 
     async connect() {
         try {
+            // Get Redis configuration from environment variables
+            const redisHost = process.env.REDIS_HOST || 'localhost';
+            const redisPort = parseInt(process.env.REDIS_PORT) || 6379;
+            const redisTLS = process.env.REDIS_TLS === 'true';
+            const redisAuth = process.env.REDIS_AUTH_TOKEN;
+
+            // Build Redis URL for v4+ client
+            const protocol = redisTLS ? 'rediss' : 'redis';
+            let redisUrl = `${protocol}://${redisHost}:${redisPort}`;
+            
+            const redisConfig = {
+                url: redisUrl
+            };
+
+            // Add TLS configuration if enabled
+            if (redisTLS) {
+                redisConfig.socket = {
+                    tls: true,
+                    rejectUnauthorized: false,
+                    checkServerIdentity: () => undefined
+                };
+            }
+
+            // Add authentication if provided
+            if (redisAuth) {
+                redisConfig.password = redisAuth;
+            }
+
+            logger.info(`🔗 Connecting to Redis at ${redisHost}:${redisPort} (TLS: ${redisTLS})`);
+
             // Main client for general operations
-            this.client = redis.createClient({
-                host: 'localhost',
-                port: 6379,
-                retry_strategy: (options) => {
-                    if (options.error && options.error.code === 'ECONNREFUSED') {
-                        return new Error('Redis server connection refused');
-                    }
-                    if (options.total_retry_time > 1000 * 60 * 60) {
-                        return new Error('Retry time exhausted');
-                    }
-                    if (options.attempt > 10) {
-                        return undefined;
-                    }
-                    return Math.min(options.attempt * 100, 3000);
-                }
-            });
+            this.client = redis.createClient(redisConfig);
 
             // Separate clients for pub/sub
-            this.publisher = redis.createClient({ host: 'localhost', port: 6379 });
-            this.subscriber = redis.createClient({ host: 'localhost', port: 6379 });
+            this.publisher = redis.createClient(redisConfig);
+            this.subscriber = redis.createClient(redisConfig);
 
             await this.client.connect();
             await this.publisher.connect();
             await this.subscriber.connect();
 
-            console.log('✅ Redis Multi-Model Client connected');
+            logger.info('✅ Redis clients connected successfully');
             return true;
         } catch (error) {
-            console.error('❌ Redis connection failed:', error);
+            logger.error('❌ Redis connection failed:', error);
             return false;
         }
     }
@@ -48,9 +64,9 @@ class RedisMultiModelClient {
         try {
             return await operation(...args);
         } catch (error) {
-            console.error(`❌ Redis ${operationName} error:`, error.message);
-            console.error(`   Operation: ${operationName}`);
-            console.error(`   Args:`, args);
+            logger.error(`❌ Redis ${operationName} error:`, error.message);
+            logger.error(`   Operation: ${operationName}`);
+            logger.error(`   Args:`, args);
             throw error;
         }
     }
@@ -59,7 +75,6 @@ class RedisMultiModelClient {
         if (this.client) await this.client.disconnect();
         if (this.publisher) await this.publisher.disconnect();
         if (this.subscriber) await this.subscriber.disconnect();
-        console.log('🔌 Redis disconnected');
     }
 
     // ==========================================
@@ -139,7 +154,7 @@ class RedisMultiModelClient {
                 const parsedMessage = JSON.parse(message);
                 callback(parsedMessage);
             } catch (error) {
-                console.error('Error parsing game update:', error);
+                logger.error('Error parsing game update:', error);
             }
         });
     }
@@ -157,7 +172,6 @@ class RedisMultiModelClient {
         try {
             const streamKey = `game:${gameId}:events`;
             
-            console.log(`🔍 Adding game event: ${eventType} to ${streamKey}`);
             
             // Use the correct xAdd syntax - pass fields as key-value pairs
             const result = await this.client.xAdd(streamKey, '*', {
@@ -166,22 +180,21 @@ class RedisMultiModelClient {
                 'timestamp': Date.now().toString()
             });
             
-            console.log(`✅ Event added with ID: ${result}`);
             
             // Try to keep only last 1000 events per game (use correct xTrim syntax)
             try {
                 await this.client.xTrim(streamKey, 'MAXLEN', 1000);
             } catch (trimError) {
-                console.warn(`⚠️ Could not trim stream ${streamKey}:`, trimError.message);
+                logger.warn(`⚠️ Could not trim stream ${streamKey}:`, trimError.message);
             }
             
         } catch (error) {
-            console.error(`❌ Redis addGameEvent error for game ${gameId}:`, error.message);
-            console.error(`   Event type: ${eventType}`);
-            console.error(`   Event data:`, eventData);
+            logger.error(`❌ Redis addGameEvent error for game ${gameId}:`, error.message);
+            logger.error(`   Event type: ${eventType}`);
+            logger.error(`   Event data:`, eventData);
             
             // Don't throw the error - just log it so the game continues
-            console.warn(`⚠️ Continuing without event logging for this operation`);
+            logger.warn(`⚠️ Continuing without event logging for this operation`);
         }
     }
 
@@ -295,11 +308,10 @@ class RedisMultiModelClient {
                 score: result.score
             }));
             
-            console.log(`📊 Retrieved ${leaderboard.length} entries from ${key}`);
             return leaderboard;
             
         } catch (error) {
-            console.error(`Error getting leaderboard ${category}:`, error);
+            logger.error(`Error getting leaderboard ${category}:`, error);
             return [];
         }
     }
@@ -314,10 +326,9 @@ class RedisMultiModelClient {
             // Set expiration (optional - keep leaderboards for 30 days)
             await this.client.expire(key, 30 * 24 * 3600);
             
-            console.log(`🏆 Updated ${category} leaderboard: ${playerId} = ${score}`);
             
         } catch (error) {
-            console.error(`Error updating leaderboard ${category}:`, error);
+            logger.error(`Error updating leaderboard ${category}:`, error);
         }
     }
 
@@ -331,7 +342,7 @@ class RedisMultiModelClient {
             return rank !== null ? rank + 1 : null;
             
         } catch (error) {
-            console.error(`Error getting player rank ${category}:`, error);
+            logger.error(`Error getting player rank ${category}:`, error);
             return null;
         }
     }
@@ -358,11 +369,10 @@ class RedisMultiModelClient {
                 stats[key] = parseInt(stats[key]) || 0;
             });
             
-            console.log('📊 Global stats retrieved:', stats);
             return stats;
             
         } catch (error) {
-            console.error('Error getting global stats:', error);
+            logger.error('Error getting global stats:', error);
             return {
                 totalGames: 0,
                 plantsPlanted: 0,
@@ -383,11 +393,10 @@ class RedisMultiModelClient {
             // Set expiration for counters (optional - keep for 1 year)
             await this.client.expire(key, 365 * 24 * 3600);
             
-            console.log(`📊 Counter ${counterName} incremented by ${amount} to ${newValue}`);
             return newValue;
             
         } catch (error) {
-            console.error(`Error incrementing counter ${counterName}:`, error);
+            logger.error(`Error incrementing counter ${counterName}:`, error);
             return 0;
         }
     }
@@ -400,10 +409,9 @@ class RedisMultiModelClient {
             // Set expiration (optional - keep for 1 year)
             await this.client.expire('hll:unique_players', 365 * 24 * 3600);
             
-            console.log(`👥 Added unique player: ${playerId}`);
             
         } catch (error) {
-            console.error('Error adding unique player:', error);
+            logger.error('Error adding unique player:', error);
         }
     }
 
@@ -448,12 +456,11 @@ class RedisMultiModelClient {
             const intAmount = parseInt(amount) || 1;
             const counterKey = `counter:${key}`;
             
-            console.log(`🔍 Incrementing counter: ${counterKey} by ${intAmount}`);
             
             return await this.client.incrBy(counterKey, intAmount);
         } catch (error) {
-            console.error(`❌ Redis incrementCounter error for key ${key}:`, error.message);
-            console.error(`   Amount: ${amount} (parsed: ${parseInt(amount) || 1})`);
+            logger.error(`❌ Redis incrementCounter error for key ${key}:`, error.message);
+            logger.error(`   Amount: ${amount} (parsed: ${parseInt(amount) || 1})`);
             throw error;
         }
     }

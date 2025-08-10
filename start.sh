@@ -1,9 +1,15 @@
 #!/bin/bash
 
-# Plants vs Zombies - Redis Edition Startup Script
+# Plants vs Zombies - Redis Edition Production Startup Script
+
+set -e  # Exit on any error
 
 echo "🌻 Starting Plants vs Zombies - Redis Edition"
 echo "=============================================="
+
+# Create necessary directories
+mkdir -p logs
+mkdir -p backups
 
 # Check if Redis is running
 if ! pgrep -x "redis-server" > /dev/null; then
@@ -34,14 +40,31 @@ else
     exit 1
 fi
 
+# Check Node.js version
+NODE_VERSION=$(node --version)
+echo "📦 Node.js version: $NODE_VERSION"
+
+# Install dependencies if needed
+if [ ! -d "node_modules" ]; then
+    echo "📦 Installing dependencies..."
+    npm install
+fi
+
+# Set production environment
+export NODE_ENV=production
+
 # Start the game server
 echo "🚀 Starting Plants vs Zombies server..."
 echo ""
-echo "🎮 Game will be available at: http://localhost:3000"
-echo "📊 API will be available at: http://localhost:3000/api"
+echo "🎮 Game: http://localhost:3001"
+echo "📊 API: http://localhost:3001/api"
+echo "🏥 Health: http://localhost:3001/api/health"
+echo "📈 Stats: http://localhost:3001/api/stats"
+echo "🏆 Leaderboard: http://localhost:3001/api/leaderboard/high_scores"
 echo ""
-echo "Press Ctrl+C to stop the server"
+echo "📝 Logs: tail -f logs/server.log"
+echo "🛑 Press Ctrl+C to stop the server"
 echo ""
 
-# Start the Node.js server
-npm start
+# Start the Node.js server with logging
+node server.js 2>&1 | tee -a logs/server.log
