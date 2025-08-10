@@ -258,6 +258,113 @@ class PlantsVsZombiesEngine {
     // GAME LIFECYCLE MANAGEMENT
     // ==========================================
 
+    async updatePlayerStats(gameId, playerId, stats) {
+        try {
+            console.log(`📊 Updating player stats for ${playerId}:`, stats);
+            
+            // Add unique player to tracking
+            await this.redis.addUniquePlayer(playerId);
+            
+            // Update leaderboards
+            if (stats.score) {
+                await this.redis.updateLeaderboard('high_scores', playerId, stats.score);
+            }
+            
+            if (stats.zombiesKilled) {
+                await this.redis.updateLeaderboard('zombies_killed', playerId, stats.zombiesKilled);
+                await this.redis.incrementCounter('zombies_killed', stats.zombiesKilled);
+            }
+            
+            if (stats.plantsPlanted) {
+                await this.redis.updateLeaderboard('plants_planted', playerId, stats.plantsPlanted);
+                await this.redis.incrementCounter('plants_planted', stats.plantsPlanted);
+            }
+            
+            if (stats.wavesCompleted) {
+                await this.redis.updateLeaderboard('waves_completed', playerId, stats.wavesCompleted);
+            }
+            
+            if (stats.gameWon) {
+                await this.redis.updateLeaderboard('games_won', playerId, (stats.gamesWon || 0) + 1);
+                await this.redis.incrementCounter('games_won', 1);
+            }
+            
+            console.log(`✅ Player stats updated for ${playerId}`);
+            
+        } catch (error) {
+            console.error('Error updating player stats:', error);
+        }
+    }
+
+    async endGame(gameId, reason = 'completed') {
+        try {
+            console.log(`🏁 Ending game ${gameId}, reason: ${reason}`);
+            
+            const gameState = this.games.get(gameId);
+            if (!gameState) {
+                console.log(`❌ Game ${gameId} not found for ending`);
+                return;
+            }
+            
+            // Calculate final stats for each player
+            for (const [playerId, playerData] of Object.entries(gameState.players)) {
+                const stats = {
+                    score: playerData.score || 0,
+                    zombiesKilled: playerData.zombiesKilled || 0,
+                    plantsPlanted: playerData.plantsPlanted || 0,
+                    wavesCompleted: gameState.currentWave || 0,
+                    gameWon: reason === 'victory',
+                    gamesWon: playerData.gamesWon || 0
+                };
+                
+                await this.updatePlayerStats(gameId, playerId, stats);
+            }
+            
+            // Update game state
+            gameState.status = reason === 'victory' ? 'won' : 'lost';
+            gameState.endTime = Date.now();
+            gameState.endReason = reason;
+            
+            // Save final game state
+            await this.redis.saveGameState(gameId, gameState);
+            
+            // Clean up game resources
+            this.cleanupGame(gameId);
+            
+            console.log(`✅ Game ${gameId} ended successfully`);
+            
+        } catch (error) {
+            console.error(`Error ending game ${gameId}:`, error);
+        }
+    }
+
+    cleanupGame(gameId) {
+        try {
+            // Stop wave manager
+            if (this.waveManagers.has(gameId)) {
+                const waveManager = this.waveManagers.get(gameId);
+                if (waveManager.cleanup) {
+                    waveManager.cleanup();
+                }
+                this.waveManagers.delete(gameId);
+            }
+            
+            // Stop game loop
+            if (this.gameLoops.has(gameId)) {
+                clearInterval(this.gameLoops.get(gameId));
+                this.gameLoops.delete(gameId);
+            }
+            
+            // Remove from active games
+            this.games.delete(gameId);
+            
+            console.log(`🧹 Cleaned up game ${gameId}`);
+            
+        } catch (error) {
+            console.error(`Error cleaning up game ${gameId}:`, error);
+        }
+    }
+
     async createGame(hostPlayerId, gameMode = 'cooperative') {
         const gameId = uuidv4();
         
@@ -430,9 +537,13 @@ class PlantsVsZombiesEngine {
             score: 0,
             plantsPlaced: 0,
             zombiesKilled: 0,
+            gamesWon: 0,
             powerups: {},
             achievements: []
         };
+
+        // Track unique player for leaderboard
+        await this.redis.addUniquePlayer(playerId);
 
         await this.redis.saveGameState(gameId, gameState);
         await this.redis.addPlayerToGame(gameId, playerId);
@@ -673,8 +784,18 @@ class PlantsVsZombiesEngine {
         gameState.board[row][col].plant = plant;
         gameState.plants.push(plant);
         player.sun -= plantData.cost;
-        player.plantsPlaced++;
+        player.plantsPlaced = (player.plantsPlaced || 0) + 1;
+        player.score = (player.score || 0) + Math.floor(plantData.cost / 2); // Award points for planting
         gameState.stats.totalPlantsPlaced++;
+
+        // Update leaderboard stats
+        await this.updatePlayerLeaderboardStats(gameId, playerId, {
+            plantsPlanted: player.plantsPlaced,
+            score: player.score
+        });
+
+        // Update global counter
+        await this.redis.incrementCounter('plants_planted');
 
         await this.redis.saveGameState(gameId, gameState);
         
@@ -804,6 +925,14 @@ class PlantsVsZombiesEngine {
                     gameState.waveInProgress = false;
                     gameState.currentWave++;
                     gameState.nextWaveTime = now + this.WAVE_SYSTEM.PREPARATION_TIME;
+                    
+                    // Update leaderboard stats for wave completion
+                    for (const [playerId, player] of Object.entries(gameState.players)) {
+                        await this.updatePlayerLeaderboardStats(gameId, playerId, {
+                            wavesCompleted: gameState.currentWave - 1,
+                            score: player.score || 0
+                        });
+                    }
                     
                     await this.redis.publishGameUpdate(gameId, 'wave_completed', {
                         completedWave: gameState.currentWave - 1,
@@ -1153,20 +1282,58 @@ class PlantsVsZombiesEngine {
         });
     }
 
-    killZombie(gameState, zombie) {
+    async killZombie(gameState, zombie) {
         // Award points to all players
-        Object.values(gameState.players).forEach(player => {
-            player.score += zombie.points;
-            player.zombiesKilled++;
-        });
+        for (const [playerId, player] of Object.entries(gameState.players)) {
+            player.score = (player.score || 0) + (zombie.points || 100);
+            player.zombiesKilled = (player.zombiesKilled || 0) + 1;
+            
+            // Update leaderboard stats
+            await this.updatePlayerLeaderboardStats(gameState.id, playerId, {
+                score: player.score,
+                zombiesKilled: player.zombiesKilled
+            });
+        }
 
         // Update global stats
-        this.redis.incrementCounter('zombies_killed');
+        await this.redis.incrementCounter('zombies_killed');
         
         // Remove from lane tracking
-        this.redis.removeZombieFromLane(gameState.id, zombie.row, zombie.id);
+        await this.redis.removeZombieFromLane(gameState.id, zombie.row, zombie.id);
         
         zombie.health = 0;
+        console.log(`💀 Zombie killed in game ${gameState.id}, players earned ${zombie.points || 100} points`);
+    }
+
+    async updatePlayerLeaderboardStats(gameId, playerId, stats) {
+        try {
+            // Add unique player to tracking
+            await this.redis.addUniquePlayer(playerId);
+            
+            // Update leaderboards with current stats
+            if (stats.score !== undefined) {
+                await this.redis.updateLeaderboard('high_scores', playerId, stats.score);
+            }
+            
+            if (stats.zombiesKilled !== undefined) {
+                await this.redis.updateLeaderboard('zombies_killed', playerId, stats.zombiesKilled);
+            }
+            
+            if (stats.plantsPlanted !== undefined) {
+                await this.redis.updateLeaderboard('plants_planted', playerId, stats.plantsPlanted);
+            }
+            
+            if (stats.wavesCompleted !== undefined) {
+                await this.redis.updateLeaderboard('waves_completed', playerId, stats.wavesCompleted);
+            }
+            
+            if (stats.gamesWon !== undefined) {
+                await this.redis.updateLeaderboard('games_won', playerId, stats.gamesWon);
+            }
+            
+        } catch (error) {
+            console.error('Error updating leaderboard stats:', error);
+        }
     }
 
     // ==========================================
@@ -1408,8 +1575,27 @@ class PlantsVsZombiesEngine {
             const finalScore = this.calculateFinalScore(gameState, player);
             player.finalScore = finalScore;
             
-            await this.redis.updateLeaderboard('high_scores', playerId, finalScore, playerId);
-            await this.redis.updateLeaderboard('zombies_killed', playerId, player.zombiesKilled, playerId);
+            // Update comprehensive leaderboard stats
+            const stats = {
+                score: finalScore,
+                zombiesKilled: player.zombiesKilled || 0,
+                plantsPlanted: player.plantsPlaced || 0,
+                wavesCompleted: gameState.currentWave || 0
+            };
+            
+            // Add games won if victory
+            if (result === 'victory') {
+                player.gamesWon = (player.gamesWon || 0) + 1;
+                stats.gamesWon = player.gamesWon;
+            }
+            
+            await this.updatePlayerLeaderboardStats(gameState.id, playerId, stats);
+        }
+        
+        // Update global counters
+        await this.redis.incrementCounter('total_games');
+        if (result === 'victory') {
+            await this.redis.incrementCounter('games_won');
         }
         
         // Stop game loop

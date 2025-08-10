@@ -266,9 +266,10 @@
             </div>
             
             <div class="login-form">
-                <div class="input-group">
+                <div class="input-group username-container">
                     <label for="newPlayerNameInput">Player Name</label>
                     <input type="text" id="newPlayerNameInput" placeholder="Enter your name" maxlength="20" required autocomplete="off">
+                    <div class="username-hint">💡 Suggested</div>
                 </div>
                 
                 <div class="game-mode-selection">
@@ -310,9 +311,10 @@
             </div>
             
             <div class="player-name-section">
-                <div class="input-group">
+                <div class="input-group username-container">
                     <label for="resumePlayerNameInput">Enter Your Player Name</label>
                     <input type="text" id="resumePlayerNameInput" placeholder="Enter your name to find saves" maxlength="20" autocomplete="off">
+                    <div class="username-hint">💡 Suggested</div>
                 </div>
             </div>
             
@@ -335,6 +337,92 @@
             
             <div class="form-actions">
                 <button id="backToMainFromResumeBtn" class="action-btn secondary-btn">
+                    ← Back to Menu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard Screen -->
+    <div id="leaderboardScreen" class="screen" style="display: none;">
+        <div class="leaderboard-container">
+            <div class="leaderboard-header">
+                <h2>🏆 Leaderboard</h2>
+                <p>Top players in the garden defense!</p>
+            </div>
+            
+            <div class="leaderboard-categories">
+                <button id="highScoresTab" class="category-tab active" data-category="high_scores">
+                    🏆 High Scores
+                </button>
+                <button id="zombiesKilledTab" class="category-tab" data-category="zombies_killed">
+                    🧟 Zombies Killed
+                </button>
+                <button id="plantsPlantedTab" class="category-tab" data-category="plants_planted">
+                    🌱 Plants Planted
+                </button>
+                <button id="wavesCompletedTab" class="category-tab" data-category="waves_completed">
+                    🌊 Waves Completed
+                </button>
+                <button id="gamesWonTab" class="category-tab" data-category="games_won">
+                    🎮 Games Won
+                </button>
+            </div>
+            
+            <div id="leaderboardContent" class="leaderboard-content">
+                <div id="leaderboardLoading" class="loading-message">
+                    <div class="loading-spinner">🌻</div>
+                    <p>Loading leaderboard...</p>
+                </div>
+                
+                <div id="leaderboardList" class="leaderboard-list" style="display: none;">
+                    <!-- Leaderboard entries will be populated here -->
+                </div>
+                
+                <div id="leaderboardEmpty" class="empty-message" style="display: none;">
+                    <div class="empty-icon">🏆</div>
+                    <h4>No Rankings Yet</h4>
+                    <p>Be the first to make it to the leaderboard!</p>
+                    <p>Play some games to start climbing the ranks.</p>
+                </div>
+            </div>
+            
+            <div class="leaderboard-stats">
+                <div class="stat-item">
+                    <div class="stat-icon">🎮</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalGamesPlayed">-</div>
+                        <div class="stat-label">Total Games</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalPlayers">-</div>
+                        <div class="stat-label">Total Players</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">🧟</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalZombiesKilled">-</div>
+                        <div class="stat-label">Zombies Defeated</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">🌱</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalPlantsPlanted">-</div>
+                        <div class="stat-label">Plants Planted</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button id="refreshLeaderboardBtn" class="action-btn secondary-btn">
+                    🔄 Refresh
+                </button>
+                <button id="backToMainFromLeaderboardBtn" class="action-btn secondary-btn">
                     ← Back to Menu
                 </button>
             </div>

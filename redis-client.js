@@ -279,6 +279,138 @@ class RedisMultiModelClient {
         await this.client.del(`game:${gameId}:info`);
     }
 
+    // ==========================================
+    // LEADERBOARD METHODS
+    // ==========================================
+
+    async getLeaderboard(category, limit = 50) {
+        try {
+            const key = `leaderboard:${category}`;
+            
+            // Get top scores with ZREVRANGE (highest to lowest)
+            const results = await this.client.zRangeWithScores(key, 0, limit - 1, { REV: true });
+            
+            const leaderboard = results.map(result => ({
+                player: result.value,
+                score: result.score
+            }));
+            
+            console.log(`📊 Retrieved ${leaderboard.length} entries from ${key}`);
+            return leaderboard;
+            
+        } catch (error) {
+            console.error(`Error getting leaderboard ${category}:`, error);
+            return [];
+        }
+    }
+
+    async updateLeaderboard(category, playerId, score) {
+        try {
+            const key = `leaderboard:${category}`;
+            
+            // Add or update player score (ZADD automatically handles max score)
+            await this.client.zAdd(key, { score: score, value: playerId });
+            
+            // Set expiration (optional - keep leaderboards for 30 days)
+            await this.client.expire(key, 30 * 24 * 3600);
+            
+            console.log(`🏆 Updated ${category} leaderboard: ${playerId} = ${score}`);
+            
+        } catch (error) {
+            console.error(`Error updating leaderboard ${category}:`, error);
+        }
+    }
+
+    async getPlayerRank(category, playerId) {
+        try {
+            const key = `leaderboard:${category}`;
+            
+            // Get player's rank (0-based, so add 1)
+            const rank = await this.client.zRevRank(key, playerId);
+            
+            return rank !== null ? rank + 1 : null;
+            
+        } catch (error) {
+            console.error(`Error getting player rank ${category}:`, error);
+            return null;
+        }
+    }
+
+    async getGlobalStats() {
+        try {
+            const stats = {};
+            
+            // Get counter values
+            stats.totalGames = await this.client.get('counter:total_games') || 0;
+            stats.plantsPlanted = await this.client.get('counter:plants_planted') || 0;
+            stats.zombiesKilled = await this.client.get('counter:zombies_killed') || 0;
+            stats.gamesWon = await this.client.get('counter:games_won') || 0;
+            
+            // Get unique players count using HyperLogLog
+            stats.uniquePlayers = await this.client.pfCount('hll:unique_players') || 0;
+            
+            // Get leaderboard sizes
+            stats.highScoreEntries = await this.client.zCard('leaderboard:high_scores') || 0;
+            stats.zombieKillerEntries = await this.client.zCard('leaderboard:zombies_killed') || 0;
+            
+            // Convert strings to numbers
+            Object.keys(stats).forEach(key => {
+                stats[key] = parseInt(stats[key]) || 0;
+            });
+            
+            console.log('📊 Global stats retrieved:', stats);
+            return stats;
+            
+        } catch (error) {
+            console.error('Error getting global stats:', error);
+            return {
+                totalGames: 0,
+                plantsPlanted: 0,
+                zombiesKilled: 0,
+                gamesWon: 0,
+                uniquePlayers: 0,
+                highScoreEntries: 0,
+                zombieKillerEntries: 0
+            };
+        }
+    }
+
+    async incrementCounter(counterName, amount = 1) {
+        try {
+            const key = `counter:${counterName}`;
+            const newValue = await this.client.incrBy(key, amount);
+            
+            // Set expiration for counters (optional - keep for 1 year)
+            await this.client.expire(key, 365 * 24 * 3600);
+            
+            console.log(`📊 Counter ${counterName} incremented by ${amount} to ${newValue}`);
+            return newValue;
+            
+        } catch (error) {
+            console.error(`Error incrementing counter ${counterName}:`, error);
+            return 0;
+        }
+    }
+
+    async addUniquePlayer(playerId) {
+        try {
+            // Add player to HyperLogLog for unique count
+            await this.client.pfAdd('hll:unique_players', playerId);
+            
+            // Set expiration (optional - keep for 1 year)
+            await this.client.expire('hll:unique_players', 365 * 24 * 3600);
+            
+            console.log(`👥 Added unique player: ${playerId}`);
+            
+        } catch (error) {
+            console.error('Error adding unique player:', error);
+        }
+    }
+
+    // ==========================================
+    // EXISTING METHODS CONTINUE...
+    // ==========================================
+
     async getActiveGames() {
         const gameIds = await this.client.sMembers('active_games');
         const games = [];

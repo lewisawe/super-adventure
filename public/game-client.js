@@ -242,8 +242,32 @@ class PlantsVsZombiesClient {
         });
         
         document.getElementById('leaderboardMenuBtn').addEventListener('click', () => {
-            // TODO: Implement leaderboard screen
-            this.showNotification('Leaderboard coming soon!', 'info');
+            this.showLeaderboard();
+        });
+        
+        // Leaderboard screen event listeners
+        document.querySelectorAll('.category-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                const category = e.target.dataset.category;
+                
+                // Update active tab
+                document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
+                
+                // Load new category
+                this.loadLeaderboard(category);
+            });
+        });
+        
+        document.getElementById('refreshLeaderboardBtn').addEventListener('click', () => {
+            const activeTab = document.querySelector('.category-tab.active');
+            const category = activeTab ? activeTab.dataset.category : 'high_scores';
+            this.loadLeaderboard(category);
+            this.loadGlobalStats();
+        });
+        
+        document.getElementById('backToMainFromLeaderboardBtn').addEventListener('click', () => {
+            this.showMainMenu();
         });
         
         // New Game Screen
@@ -1638,19 +1662,30 @@ class PlantsVsZombiesClient {
     showNewGameScreen() {
         this.hideAllScreens();
         document.getElementById('newGameScreen').style.display = 'block';
-        // Clear and focus the player name input
+        
+        // Setup username suggestions
         const nameInput = document.getElementById('newPlayerNameInput');
         nameInput.value = '';
-        nameInput.focus();
+        this.prefillSuggestedUsername('newPlayerNameInput');
+        this.setupUsernameInputHandlers('newPlayerNameInput');
+        
+        // Focus on the input after a short delay
+        setTimeout(() => nameInput.focus(), 100);
     }
 
     showResumeGameScreen() {
         this.hideAllScreens();
         document.getElementById('resumeGameScreen').style.display = 'block';
-        // Clear and focus the player name input
+        
+        // Setup username suggestions
         const nameInput = document.getElementById('resumePlayerNameInput');
         nameInput.value = '';
-        nameInput.focus();
+        this.prefillSuggestedUsername('resumePlayerNameInput');
+        this.setupUsernameInputHandlers('resumePlayerNameInput');
+        
+        // Focus on the input after a short delay
+        setTimeout(() => nameInput.focus(), 100);
+        
         // Hide saved games initially
         document.getElementById('savedGamesList').style.display = 'none';
         document.getElementById('noSavedGamesMessage').style.display = 'none';
@@ -2015,8 +2050,364 @@ class PlantsVsZombiesClient {
     }
     
     // ==========================================
-    // NEW MAIN MENU SYSTEM
+    // USERNAME SUGGESTION SYSTEM
     // ==========================================
+
+    generateSuggestedUsername() {
+        // Specific high-quality username templates inspired by the sample data
+        const premiumNames = [
+            'GardenMaster', 'ZombieSlayer', 'PlantLover', 'DefenseKing', 'SunflowerFan',
+            'WaveRider', 'PeaShooter', 'CherryBomb', 'WallNutPro', 'GardenGuardian',
+            'PlantDefender', 'ZombieHunter', 'SunCollector', 'WaveWarrior', 'GreenThumb',
+            'PlantWhisperer', 'ZombieCrusher', 'GardenHero', 'DefenseMaster', 'PlantKing',
+            'SunMaster', 'WaveMaster', 'GardenLord', 'PlantChampion', 'ZombieTerminator'
+        ];
+
+        const plantNames = [
+            'Sunflower', 'Peashooter', 'WallNut', 'CherryBomb', 'SnowPea', 
+            'Chomper', 'Repeater', 'PuffShroom', 'SunShroom', 'FumeShroom',
+            'Squash', 'Threepeater', 'Jalapeno', 'Spikeweed', 'Torchwood', 
+            'TallNut', 'Cactus', 'Blover', 'SplitPea', 'Starfruit',
+            'MagnetShroom', 'CabbagePult', 'KernelPult', 'Garlic', 'Marigold', 
+            'MelonPult', 'Gatling', 'TwinSunflower', 'GloomShroom', 'Cattail'
+        ];
+
+        const gardenTerms = [
+            'Garden', 'Plant', 'Sun', 'Leaf', 'Root', 'Bloom', 'Petal', 'Stem',
+            'Seed', 'Sprout', 'Vine', 'Thorn', 'Flower', 'Bud', 'Branch'
+        ];
+
+        const actionWords = [
+            'Master', 'King', 'Queen', 'Lord', 'Champion', 'Hero', 'Warrior',
+            'Guardian', 'Defender', 'Protector', 'Slayer', 'Hunter', 'Ranger',
+            'Expert', 'Pro', 'Ace', 'Star', 'Legend', 'Commander', 'Captain',
+            'Fighter', 'Crusher', 'Destroyer', 'Eliminator', 'Fan', 'Lover'
+        ];
+
+        const adjectives = [
+            'Epic', 'Mighty', 'Super', 'Mega', 'Ultra', 'Elite', 'Legendary', 'Supreme',
+            'Golden', 'Silver', 'Diamond', 'Mystic', 'Thunder', 'Lightning', 'Fire',
+            'Wild', 'Fierce', 'Bold', 'Brave', 'Swift', 'Strong', 'Tough', 'Steel'
+        ];
+
+        // Different username generation patterns
+        const patterns = [
+            // Premium names (30% chance)
+            () => this.getRandomElement(premiumNames),
+            () => this.getRandomElement(premiumNames),
+            () => this.getRandomElement(premiumNames),
+            
+            // Plant + Action (25% chance)
+            () => this.getRandomElement(plantNames) + this.getRandomElement(actionWords),
+            () => this.getRandomElement(plantNames) + this.getRandomElement(actionWords),
+            
+            // Adjective + Plant (20% chance)
+            () => this.getRandomElement(adjectives) + this.getRandomElement(plantNames),
+            () => this.getRandomElement(adjectives) + this.getRandomElement(plantNames),
+            
+            // Garden + Action (15% chance)
+            () => this.getRandomElement(gardenTerms) + this.getRandomElement(actionWords),
+            
+            // Plant + Number (10% chance)
+            () => this.getRandomElement(plantNames) + (Math.floor(Math.random() * 999) + 1)
+        ];
+
+        const selectedPattern = this.getRandomElement(patterns);
+        return selectedPattern();
+    }
+
+    getRandomElement(array) {
+        return array[Math.floor(Math.random() * array.length)];
+    }
+
+    prefillSuggestedUsername(inputId) {
+        const input = document.getElementById(inputId);
+        if (input && !input.value.trim()) {
+            const suggestedName = this.generateSuggestedUsername();
+            input.value = suggestedName;
+            input.setAttribute('data-suggested', 'true');
+            
+            // Add visual indication that it's a suggestion
+            input.style.fontStyle = 'italic';
+            input.style.color = '#FFD700';
+            
+            console.log(`💡 Suggested username: ${suggestedName}`);
+        }
+    }
+
+    clearSuggestedUsername(inputId) {
+        const input = document.getElementById(inputId);
+        if (input && input.getAttribute('data-suggested') === 'true') {
+            input.value = '';
+            input.removeAttribute('data-suggested');
+            input.style.fontStyle = 'normal';
+            input.style.color = '#FFFFFF';
+        }
+    }
+
+    setupUsernameInputHandlers(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+
+        // Clear suggestion when user starts typing
+        input.addEventListener('input', (e) => {
+            if (e.target.getAttribute('data-suggested') === 'true') {
+                e.target.removeAttribute('data-suggested');
+                e.target.style.fontStyle = 'normal';
+                e.target.style.color = '#FFFFFF';
+            }
+        });
+
+        // Clear suggestion when user focuses (clicks) on input
+        input.addEventListener('focus', (e) => {
+            if (e.target.getAttribute('data-suggested') === 'true') {
+                e.target.select(); // Select all text so user can easily replace it
+            }
+        });
+
+        // Add suggestion button
+        this.addSuggestionButton(inputId);
+    }
+
+    addSuggestionButton(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+
+        const inputGroup = input.closest('.input-group');
+        if (!inputGroup) return;
+
+        // Check if button already exists
+        if (inputGroup.querySelector('.suggestion-btn')) return;
+
+        const suggestionBtn = document.createElement('button');
+        suggestionBtn.type = 'button';
+        suggestionBtn.className = 'suggestion-btn';
+        suggestionBtn.innerHTML = '🎲 Random Name';
+        suggestionBtn.title = 'Generate a cool plant-themed username';
+
+        suggestionBtn.addEventListener('click', () => {
+            const newName = this.generateSuggestedUsername();
+            input.value = newName;
+            input.removeAttribute('data-suggested');
+            input.style.fontStyle = 'normal';
+            input.style.color = '#FFFFFF';
+            
+            // Add a brief highlight effect
+            input.style.background = 'rgba(76, 175, 80, 0.3)';
+            setTimeout(() => {
+                input.style.background = 'rgba(0, 0, 0, 0.7)';
+            }, 500);
+            
+            input.focus();
+            
+            // Show notification
+            this.showNotification(`Generated username: ${newName}`, 'success');
+            
+            console.log(`🎲 Generated new username: ${newName}`);
+        });
+
+        inputGroup.appendChild(suggestionBtn);
+    }
+
+    showNotification(message, type = 'info') {
+        // Create notification element if it doesn't exist
+        let notification = document.getElementById('notification');
+        if (!notification) {
+            notification = document.createElement('div');
+            notification.id = 'notification';
+            notification.className = 'notification';
+            document.body.appendChild(notification);
+        }
+
+        // Set message and type
+        notification.textContent = message;
+        notification.className = `notification ${type} show`;
+
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 3000);
+    }
+
+    showLeaderboard() {
+        console.log('🏆 Showing leaderboard screen');
+        this.hideAllScreens();
+        document.getElementById('leaderboardScreen').style.display = 'block';
+        this.loadLeaderboard('high_scores');
+        this.loadGlobalStats();
+    }
+
+    async loadLeaderboard(category = 'high_scores') {
+        console.log('🏆 Loading leaderboard for category:', category);
+        
+        // Show loading state
+        document.getElementById('leaderboardLoading').style.display = 'block';
+        document.getElementById('leaderboardList').style.display = 'none';
+        document.getElementById('leaderboardEmpty').style.display = 'none';
+        
+        try {
+            const response = await fetch(`/api/leaderboard/${category}`);
+            const data = await response.json();
+            
+            console.log('🏆 Leaderboard data:', data);
+            
+            if (data.length === 0) {
+                this.showEmptyLeaderboard();
+            } else {
+                this.displayLeaderboard(data, category);
+            }
+            
+        } catch (error) {
+            console.error('❌ Failed to load leaderboard:', error);
+            this.showEmptyLeaderboard();
+        }
+    }
+
+    displayLeaderboard(entries, category) {
+        console.log('🏆 Displaying leaderboard entries:', entries.length);
+        
+        const listContainer = document.getElementById('leaderboardList');
+        listContainer.innerHTML = '';
+        
+        entries.forEach((entry, index) => {
+            const rank = index + 1;
+            const entryElement = this.createLeaderboardEntry(entry, rank, category);
+            listContainer.appendChild(entryElement);
+        });
+        
+        // Hide loading, show list
+        document.getElementById('leaderboardLoading').style.display = 'none';
+        document.getElementById('leaderboardList').style.display = 'block';
+        document.getElementById('leaderboardEmpty').style.display = 'none';
+    }
+
+    createLeaderboardEntry(entry, rank, category) {
+        const entryDiv = document.createElement('div');
+        entryDiv.className = `leaderboard-entry rank-${rank <= 3 ? rank : 'other'}`;
+        
+        // Get category-specific display info
+        const categoryInfo = this.getCategoryInfo(category);
+        const scoreValue = this.formatScore(entry.score, category);
+        
+        // Generate player avatar emoji based on name
+        const avatarEmoji = this.generatePlayerAvatar(entry.player);
+        
+        entryDiv.innerHTML = `
+            <div class="rank-number">${this.getRankDisplay(rank)}</div>
+            <div class="player-info">
+                <div class="player-avatar">${avatarEmoji}</div>
+                <div class="player-details">
+                    <div class="player-name">${entry.player}</div>
+                    <div class="player-subtitle">${categoryInfo.subtitle}</div>
+                </div>
+            </div>
+            <div class="score-value">${scoreValue}</div>
+        `;
+        
+        return entryDiv;
+    }
+
+    getCategoryInfo(category) {
+        const categories = {
+            'high_scores': {
+                subtitle: 'Garden Defender',
+                unit: 'points'
+            },
+            'zombies_killed': {
+                subtitle: 'Zombie Slayer',
+                unit: 'zombies'
+            },
+            'plants_planted': {
+                subtitle: 'Green Thumb',
+                unit: 'plants'
+            },
+            'waves_completed': {
+                subtitle: 'Wave Master',
+                unit: 'waves'
+            },
+            'games_won': {
+                subtitle: 'Victory Champion',
+                unit: 'wins'
+            }
+        };
+        
+        return categories[category] || { subtitle: 'Player', unit: 'points' };
+    }
+
+    formatScore(score, category) {
+        const num = parseInt(score);
+        
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        
+        return num.toLocaleString();
+    }
+
+    getRankDisplay(rank) {
+        if (rank === 1) return '🥇';
+        if (rank === 2) return '🥈';
+        if (rank === 3) return '🥉';
+        return `#${rank}`;
+    }
+
+    generatePlayerAvatar(playerName) {
+        const avatars = ['🌻', '🌱', '🌿', '🍄', '🌵', '🌶️', '🍒', '🌰', '🥕', '🌽'];
+        const hash = playerName.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+        }, 0);
+        return avatars[Math.abs(hash) % avatars.length];
+    }
+
+    showEmptyLeaderboard() {
+        document.getElementById('leaderboardLoading').style.display = 'none';
+        document.getElementById('leaderboardList').style.display = 'none';
+        document.getElementById('leaderboardEmpty').style.display = 'block';
+    }
+
+    async loadGlobalStats() {
+        console.log('📊 Loading global statistics');
+        
+        try {
+            const response = await fetch('/api/stats');
+            const stats = await response.json();
+            
+            console.log('📊 Global stats:', stats);
+            
+            // Update stat displays
+            document.getElementById('totalGamesPlayed').textContent = 
+                this.formatStatValue(stats.totalGames || 0);
+            document.getElementById('totalPlayers').textContent = 
+                this.formatStatValue(stats.uniquePlayers || 0);
+            document.getElementById('totalZombiesKilled').textContent = 
+                this.formatStatValue(stats.zombiesKilled || 0);
+            document.getElementById('totalPlantsPlanted').textContent = 
+                this.formatStatValue(stats.plantsPlanted || 0);
+                
+        } catch (error) {
+            console.error('❌ Failed to load global stats:', error);
+            // Set default values
+            document.getElementById('totalGamesPlayed').textContent = '-';
+            document.getElementById('totalPlayers').textContent = '-';
+            document.getElementById('totalZombiesKilled').textContent = '-';
+            document.getElementById('totalPlantsPlanted').textContent = '-';
+        }
+    }
+
+    formatStatValue(value) {
+        const num = parseInt(value);
+        
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        
+        return num.toLocaleString();
+    }
 
     async createNewGame() {
         const playerName = document.getElementById('newPlayerNameInput').value.trim();

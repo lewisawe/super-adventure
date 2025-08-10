@@ -93,6 +93,41 @@ class PlantsVsZombiesServer {
             }
         });
 
+        // Get leaderboard for specific category
+        this.app.get('/api/leaderboard/:category', async (req, res) => {
+            try {
+                const { category } = req.params;
+                const limit = parseInt(req.query.limit) || 50;
+                
+                console.log(`🏆 Getting leaderboard for category: ${category}, limit: ${limit}`);
+                
+                const leaderboard = await this.redis.getLeaderboard(category, limit);
+                
+                console.log(`🏆 Leaderboard entries: ${leaderboard.length}`);
+                res.json(leaderboard);
+                
+            } catch (error) {
+                console.error('Leaderboard error:', error);
+                res.status(500).json({ error: 'Failed to get leaderboard' });
+            }
+        });
+
+        // Get global statistics
+        this.app.get('/api/stats', async (req, res) => {
+            try {
+                console.log('📊 Getting global statistics');
+                
+                const stats = await this.redis.getGlobalStats();
+                
+                console.log('📊 Global stats:', stats);
+                res.json(stats);
+                
+            } catch (error) {
+                console.error('Stats error:', error);
+                res.status(500).json({ error: 'Failed to get statistics' });
+            }
+        });
+
         // Debug endpoint to see all games in Redis
         this.app.get('/api/debug/games', async (req, res) => {
             try {
