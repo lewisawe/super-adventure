@@ -43,6 +43,18 @@ class RedisMultiModelClient {
         }
     }
 
+    // Helper method to wrap Redis operations with error handling
+    async safeRedisOperation(operation, operationName, ...args) {
+        try {
+            return await operation(...args);
+        } catch (error) {
+            console.error(`❌ Redis ${operationName} error:`, error.message);
+            console.error(`   Operation: ${operationName}`);
+            console.error(`   Args:`, args);
+            throw error;
+        }
+    }
+
     async disconnect() {
         if (this.client) await this.client.disconnect();
         if (this.publisher) await this.publisher.disconnect();
@@ -142,15 +154,35 @@ class RedisMultiModelClient {
     // ==========================================
 
     async addGameEvent(gameId, eventType, eventData) {
-        const streamKey = `game:${gameId}:events`;
-        await this.client.xAdd(streamKey, '*', {
-            type: eventType,
-            data: JSON.stringify(eventData),
-            timestamp: Date.now().toString()
-        });
-        
-        // Keep only last 1000 events per game
-        await this.client.xTrim(streamKey, 'MAXLEN', '~', 1000);
+        try {
+            const streamKey = `game:${gameId}:events`;
+            
+            console.log(`🔍 Adding game event: ${eventType} to ${streamKey}`);
+            
+            // Use the correct xAdd syntax - pass fields as key-value pairs
+            const result = await this.client.xAdd(streamKey, '*', {
+                'type': eventType.toString(),
+                'data': JSON.stringify(eventData),
+                'timestamp': Date.now().toString()
+            });
+            
+            console.log(`✅ Event added with ID: ${result}`);
+            
+            // Try to keep only last 1000 events per game (use correct xTrim syntax)
+            try {
+                await this.client.xTrim(streamKey, 'MAXLEN', 1000);
+            } catch (trimError) {
+                console.warn(`⚠️ Could not trim stream ${streamKey}:`, trimError.message);
+            }
+            
+        } catch (error) {
+            console.error(`❌ Redis addGameEvent error for game ${gameId}:`, error.message);
+            console.error(`   Event type: ${eventType}`);
+            console.error(`   Event data:`, eventData);
+            
+            // Don't throw the error - just log it so the game continues
+            console.warn(`⚠️ Continuing without event logging for this operation`);
+        }
     }
 
     async getGameEvents(gameId, count = 100) {
@@ -171,7 +203,10 @@ class RedisMultiModelClient {
 
     async updateLeaderboard(category, playerId, score, playerName) {
         const key = `leaderboard:${category}`;
-        await this.client.zAdd(key, { score: parseFloat(score), value: `${playerId}:${playerName}` });
+        const numericScore = parseFloat(score) || 0;
+        const member = `${playerId}:${playerName}`;
+        
+        await this.client.zAdd(key, [{ score: numericScore, value: member }]);
         
         // Keep only top 100 scores
         await this.client.zRemRangeByRank(key, 0, -101);
@@ -276,7 +311,19 @@ class RedisMultiModelClient {
     // ==========================================
 
     async incrementCounter(key, amount = 1) {
-        return await this.client.incrBy(`counter:${key}`, parseInt(amount));
+        try {
+            // Ensure amount is always an integer
+            const intAmount = parseInt(amount) || 1;
+            const counterKey = `counter:${key}`;
+            
+            console.log(`🔍 Incrementing counter: ${counterKey} by ${intAmount}`);
+            
+            return await this.client.incrBy(counterKey, intAmount);
+        } catch (error) {
+            console.error(`❌ Redis incrementCounter error for key ${key}:`, error.message);
+            console.error(`   Amount: ${amount} (parsed: ${parseInt(amount) || 1})`);
+            throw error;
+        }
     }
 
     async getCounter(key) {
