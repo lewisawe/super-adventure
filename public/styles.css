@@ -156,12 +156,19 @@ body {
 .start-btn {
     background: linear-gradient(135deg, #32CD32 0%, #228B22 100%);
     color: white;
-    animation: startBtnPulse 2s ease-in-out infinite;
+    animation: startBtnPulse 1.5s ease-in-out infinite;
+    position: relative;
+    z-index: 1000;
+    transform: scale(1.1);
+    font-size: 1.2em;
+    border: 3px solid rgba(50, 205, 50, 0.6);
 }
 
 .start-btn:hover {
     background: linear-gradient(135deg, #3CB371 0%, #2E8B57 100%);
     animation: none;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(50, 205, 50, 0.4);
 }
 
 .pause-btn {
@@ -213,10 +220,67 @@ body {
 
 @keyframes startBtnPulse {
     0%, 100% { 
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2), 0 0 0 0 rgba(50, 205, 50, 0.4);
+        box-shadow: 
+            0 4px 15px rgba(0, 0, 0, 0.2), 
+            0 0 0 0 rgba(50, 205, 50, 0.7),
+            0 0 20px rgba(50, 205, 50, 0.4),
+            inset 0 0 20px rgba(255, 255, 255, 0.1);
+        transform: scale(1.1);
+        filter: brightness(1);
     }
     50% { 
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), 0 0 0 10px rgba(50, 205, 50, 0);
+        box-shadow: 
+            0 8px 25px rgba(0, 0, 0, 0.4), 
+            0 0 0 15px rgba(50, 205, 50, 0),
+            0 0 40px rgba(50, 205, 50, 0.8),
+            inset 0 0 30px rgba(255, 255, 255, 0.2);
+        transform: scale(1.15);
+        filter: brightness(1.2);
+    }
+}
+
+/* Extra prominent animation when ready to start */
+.start-btn.ready-to-start {
+    animation: startBtnReadyPulse 1s ease-in-out infinite, startBtnBounce 2s ease-in-out infinite;
+    transform: scale(1.2);
+    z-index: 1001;
+    border: 4px solid rgba(255, 215, 0, 0.8);
+    background: linear-gradient(135deg, #32CD32 0%, #228B22 100%, #FFD700 200%);
+}
+
+@keyframes startBtnReadyPulse {
+    0%, 100% { 
+        box-shadow: 
+            0 6px 20px rgba(0, 0, 0, 0.3), 
+            0 0 0 0 rgba(255, 215, 0, 0.8),
+            0 0 30px rgba(50, 205, 50, 0.6),
+            0 0 50px rgba(255, 215, 0, 0.4),
+            inset 0 0 25px rgba(255, 255, 255, 0.2);
+        filter: brightness(1.1);
+    }
+    50% { 
+        box-shadow: 
+            0 10px 30px rgba(0, 0, 0, 0.5), 
+            0 0 0 20px rgba(255, 215, 0, 0),
+            0 0 60px rgba(50, 205, 50, 0.9),
+            0 0 80px rgba(255, 215, 0, 0.6),
+            inset 0 0 40px rgba(255, 255, 255, 0.3);
+        filter: brightness(1.3);
+    }
+}
+
+@keyframes startBtnBounce {
+    0%, 100% { 
+        transform: scale(1.2) translateY(0px);
+    }
+    25% { 
+        transform: scale(1.22) translateY(-3px);
+    }
+    50% { 
+        transform: scale(1.25) translateY(-5px);
+    }
+    75% { 
+        transform: scale(1.22) translateY(-2px);
     }
 }
 
@@ -1361,6 +1425,142 @@ body {
     background: linear-gradient(135deg, #228B22 0%, #006400 100%);
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* ==========================================
+   RESUME GAME BUTTON
+   ========================================== */
+
+.resume-btn {
+    background: linear-gradient(135deg, #FF8C00 0%, #FF6347 100%);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    padding: 15px 30px;
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3);
+    margin-top: 15px;
+    width: 100%;
+    animation: resumeBtnPulse 2s ease-in-out infinite;
+}
+
+.resume-btn:hover {
+    background: linear-gradient(135deg, #FF7F50 0%, #FF4500 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(255, 140, 0, 0.4);
+    animation: none;
+}
+
+@keyframes resumeBtnPulse {
+    0%, 100% { 
+        box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3), 0 0 0 0 rgba(255, 140, 0, 0.4);
+    }
+    50% { 
+        box-shadow: 0 6px 20px rgba(255, 140, 0, 0.4), 0 0 0 10px rgba(255, 140, 0, 0);
+    }
+}
+
+/* ==========================================
+   ACTIVE GAMES LIST
+   ========================================== */
+
+.active-games-list {
+    margin-top: 20px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.active-games-list h3 {
+    color: white;
+    margin: 0 0 15px 0;
+    font-family: 'Fredoka One', cursive;
+    text-align: center;
+    font-size: 1.2em;
+}
+
+.active-games-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.active-game-item {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+}
+
+.active-game-item:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    border-color: #FFD700;
+}
+
+.active-game-item:active {
+    transform: translateY(0px);
+    background: rgba(255, 215, 0, 0.2);
+}
+
+.active-game-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.active-game-id {
+    color: #FFD700;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.active-game-details {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.8em;
+    display: flex;
+    gap: 15px;
+}
+
+.active-game-status {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.7em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-waiting {
+    background: rgba(255, 193, 7, 0.2);
+    color: #FFC107;
+    border: 1px solid #FFC107;
+}
+
+.status-playing {
+    background: rgba(40, 167, 69, 0.2);
+    color: #28A745;
+    border: 1px solid #28A745;
+}
+
+.status-paused {
+    background: rgba(255, 140, 0, 0.2);
+    color: #FF8C00;
+    border: 1px solid #FF8C00;
 }
 
 .login-stats {

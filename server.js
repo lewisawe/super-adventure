@@ -93,6 +93,51 @@ class PlantsVsZombiesServer {
             }
         });
 
+        // Get player's active games
+        this.app.get('/api/player/:playerId/games', async (req, res) => {
+            try {
+                const { playerId } = req.params;
+                const activeGames = await this.redis.getActiveGames();
+                const playerGames = [];
+
+                for (const gameInfo of activeGames) {
+                    const gameId = gameInfo.id;
+                    
+                    // Get the actual game state from Redis
+                    const stateKey = `game:${gameId}:state`;
+                    const stateData = await this.redis.client.hGetAll(stateKey);
+                    
+                    if (stateData && stateData.data) {
+                        const gameState = JSON.parse(stateData.data);
+                        
+                        // Check if player is in this game
+                        if (gameState.players && gameState.players[playerId]) {
+                            const gameDetails = {
+                                gameId: gameId,
+                                mode: gameState.mode || 'cooperative',
+                                status: gameState.status === 'paused' ? 'paused' : 
+                                       (gameState.currentWave > 0 ? 'playing' : 'waiting'),
+                                wave: gameState.currentWave || 1,
+                                players: Object.keys(gameState.players).length,
+                                lastActivity: parseInt(stateData.lastUpdate) || gameState.lastUpdate || Date.now(),
+                                playerSun: gameState.players[playerId].sun || 0,
+                                createdAt: gameState.createdAt || Date.now()
+                            };
+                            playerGames.push(gameDetails);
+                        }
+                    }
+                }
+
+                // Sort by last activity (most recent first)
+                playerGames.sort((a, b) => b.lastActivity - a.lastActivity);
+
+                res.json(playerGames);
+            } catch (error) {
+                console.error('Player games error:', error);
+                res.status(500).json({ error: 'Failed to get player games' });
+            }
+        });
+
         // Debug endpoint to reload a game
         this.app.post('/api/debug/reload-game/:gameId', async (req, res) => {
             try {
@@ -179,38 +224,49 @@ class PlantsVsZombiesServer {
                     }
 
                     // Join or create game
-                    let gameState;
+                    let result;
                     if (gameId && await this.redis.keyExists(`game:${gameId}:state`)) {
-                        gameState = await this.gameEngine.joinGame(gameId, playerName);
+                        result = await this.gameEngine.joinGame(gameId, playerName);
                     } else {
-                        gameState = await this.gameEngine.createGame(playerName);
+                        const gameState = await this.gameEngine.createGame(playerName);
                         await this.redis.incrementCounter('total_games');
+                        result = {
+                            gameId: gameState.id,
+                            playerId: playerName,
+                            gameState: gameState,
+                            isRejoining: false
+                        };
                     }
 
                     // Store player connection info
                     this.connectedPlayers.set(socket.id, {
-                        playerId: playerName,
-                        gameId: gameState.id,
+                        playerId: result.playerId,
+                        gameId: result.gameId,
                         playerData: playerData
                     });
 
                     // Join socket room
-                    socket.join(gameState.id);
+                    socket.join(result.gameId);
 
                     // Subscribe to Redis updates for this game
-                    await this.redis.subscribeToGame(gameState.id, (update) => {
-                        console.log(`📡 Broadcasting ${update.type} to game ${gameState.id}`);
-                        this.io.to(gameState.id).emit(update.type, update.data);
+                    await this.redis.subscribeToGame(result.gameId, (update) => {
+                        console.log(`📡 Broadcasting ${update.type} to game ${result.gameId}`);
+                        this.io.to(result.gameId).emit(update.type, update.data);
                     });
 
                     socket.emit('game_joined', {
-                        gameId: gameState.id,
-                        playerId: playerName,
-                        gameState: gameState,
-                        playerData: playerData
+                        gameId: result.gameId,
+                        playerId: result.playerId,
+                        gameState: result.gameState,
+                        playerData: playerData,
+                        isRejoining: result.isRejoining
                     });
 
-                    console.log(`🎮 ${playerName} joined game: ${gameState.id}`);
+                    if (result.isRejoining) {
+                        console.log(`🔄 ${result.playerId} rejoined game: ${result.gameId}`);
+                    } else {
+                        console.log(`🎮 ${result.playerId} joined game: ${result.gameId}`);
+                    }
 
                 } catch (error) {
                     console.error('Join game error:', error);

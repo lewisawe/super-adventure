@@ -303,6 +303,34 @@ class PlantsVsZombiesClient {
             this.toggleSFX();
         });
         
+        // Resume game functionality
+        document.getElementById('resumeGameBtn').addEventListener('click', () => {
+            this.showActiveGamesList();
+        });
+        
+        // Player name input - load active games when name is entered
+        let inputTimeout;
+        document.getElementById('playerNameInput').addEventListener('input', (e) => {
+            const playerName = e.target.value.trim();
+            console.log('📝 Player name input changed:', playerName);
+            
+            // Clear previous timeout
+            if (inputTimeout) {
+                clearTimeout(inputTimeout);
+            }
+            
+            // Debounce the API call
+            inputTimeout = setTimeout(() => {
+                if (playerName.length >= 2) {
+                    console.log('🔍 Loading games for:', playerName);
+                    this.loadPlayerActiveGames(playerName);
+                } else {
+                    console.log('❌ Name too short, hiding games');
+                    this.hideActiveGames();
+                }
+            }, 500); // Wait 500ms after user stops typing
+        });
+        
         // Window events
         window.addEventListener('beforeunload', () => {
             if (this.socket && this.isConnected) {
@@ -582,7 +610,51 @@ class PlantsVsZombiesClient {
         this.hideLoadingScreen();
         this.showGameContainer();
         
-        this.showNotification(`Joined game: ${data.gameId}`, 'success');
+        // Check if this is a rejoin of an already started game
+        const isGameStarted = data.gameState.status === 'playing' || data.gameState.status === 'paused';
+        const isRejoining = data.isRejoining;
+        
+        if (isRejoining && isGameStarted) {
+            console.log('🔄 Rejoining started game - skipping start button');
+            console.log('🎮 Game state on rejoin:', this.gameState);
+            console.log('🌱 Plants in game state:', this.gameState.plants);
+            console.log('🌊 Current wave:', this.gameState.currentWave);
+            console.log('☀️ Player sun:', this.gameState.players[this.playerId]?.sun);
+            
+            // Hide start button and show appropriate controls
+            document.getElementById('startGameBtn').style.display = 'none';
+            document.getElementById('pauseGameBtn').style.display = 'block';
+            this.updatePauseButton();
+            this.showAudioControls();
+            
+            // Set game as started
+            this.gameStarted = true;
+            
+            // Force update the game board with restored state
+            console.log('🔄 Forcing game board update...');
+            this.updateGameBoard();
+            this.updateGameStats();
+            this.updatePlayersList();
+            
+            // If game is paused, automatically resume it
+            if (this.gameState.status === 'paused') {
+                console.log('⏸️ Game is paused, automatically resuming...');
+                this.socket.emit('resume_game');
+            }
+            
+            // Start game loop for animations
+            this.startGameLoop();
+            
+            this.showNotification(`Resumed game: ${data.gameId}`, 'success');
+        } else {
+            console.log('🎮 Joining new game - showing start button');
+            // Make start button extra prominent for new games
+            const startBtn = document.getElementById('startGameBtn');
+            startBtn.classList.add('ready-to-start');
+            startBtn.style.display = 'block';
+            
+            this.showNotification(`Joined game: ${data.gameId}`, 'success');
+        }
     }
 
     handleGameStarted(data) {
@@ -590,7 +662,10 @@ class PlantsVsZombiesClient {
         this.gameState = data.gameState;
         
         // Update UI
-        document.getElementById('startGameBtn').style.display = 'none';
+        const startBtn = document.getElementById('startGameBtn');
+        startBtn.style.display = 'none';
+        startBtn.classList.remove('ready-to-start'); // Remove special animation
+        
         document.getElementById('pauseGameBtn').style.display = 'block';
         this.updatePauseButton();
         this.showAudioControls();
@@ -853,7 +928,12 @@ class PlantsVsZombiesClient {
     }
 
     updatePlants() {
-        if (!this.gameState.plants) return;
+        if (!this.gameState.plants) {
+            console.log('❌ No plants in game state');
+            return;
+        }
+        
+        console.log('🌱 Updating plants, found:', this.gameState.plants.length, 'plants');
         
         // Get existing plant elements
         const existingPlants = new Map();
@@ -1598,6 +1678,152 @@ class PlantsVsZombiesClient {
         }
     }
 
+    async loadPlayerActiveGames(playerName) {
+        try {
+            console.log('🔍 Loading active games for player:', playerName);
+            const response = await fetch(`/api/player/${encodeURIComponent(playerName)}/games`);
+            const games = await response.json();
+            
+            console.log('📋 Found games:', games);
+            this.displayActiveGames(games);
+            
+        } catch (error) {
+            console.error('❌ Failed to load player games:', error);
+            this.hideActiveGames();
+        }
+    }
+
+    displayActiveGames(games) {
+        console.log('🎮 Displaying active games:', games);
+        const resumeBtn = document.getElementById('resumeGameBtn');
+        const activeGamesList = document.getElementById('activeGamesList');
+        const container = document.getElementById('activeGamesContainer');
+        
+        if (games.length === 0) {
+            console.log('❌ No games found, hiding resume functionality');
+            this.hideActiveGames();
+            return;
+        }
+        
+        console.log('✅ Showing resume functionality for', games.length, 'games');
+        
+        // Show resume functionality
+        resumeBtn.style.display = 'block';
+        activeGamesList.style.display = 'block';
+        
+        // Clear existing games
+        container.innerHTML = '';
+        
+        // Add each game
+        games.forEach(game => {
+            console.log('🎯 Adding game card for:', game.gameId);
+            const gameItem = document.createElement('div');
+            gameItem.className = 'active-game-item';
+            gameItem.dataset.gameId = game.gameId;
+            
+            const timeSince = this.formatTimeSince(game.lastActivity);
+            
+            gameItem.innerHTML = `
+                <div class="active-game-info">
+                    <div class="active-game-id">Game: ${game.gameId.substring(0, 8)}...</div>
+                    <div class="active-game-details">
+                        <span>🎮 ${game.mode}</span>
+                        <span>👥 ${game.players} players</span>
+                        <span>🌊 Wave ${game.wave}</span>
+                        <span>☀️ ${game.playerSun} sun</span>
+                        <span>⏰ ${timeSince}</span>
+                    </div>
+                </div>
+                <div class="active-game-status status-${game.status}">
+                    ${game.status}
+                </div>
+            `;
+            
+            // Add click event listener with proper binding
+            const clickHandler = ((gameId) => {
+                return (event) => {
+                    console.log('🖱️ Game card clicked!');
+                    console.log('🔄 Resuming game:', gameId);
+                    event.preventDefault();
+                    event.stopPropagation();
+                    try {
+                        this.resumeGame(gameId);
+                    } catch (error) {
+                        console.error('❌ Error in resumeGame:', error);
+                    }
+                };
+            })(game.gameId);
+            
+            gameItem.addEventListener('click', clickHandler);
+            console.log('🎯 Click listener added for game:', game.gameId);
+            
+            container.appendChild(gameItem);
+            
+            // Verify the element was added
+            console.log('✅ Game card added to DOM:', gameItem);
+            console.log('📍 Container children count:', container.children.length);
+            
+            // Also add onclick as backup
+            gameItem.onclick = (event) => {
+                console.log('🖱️ Game card onclick triggered!');
+                console.log('🔄 Resuming game via onclick:', game.gameId);
+                event.preventDefault();
+                this.resumeGame(game.gameId);
+            };
+        });
+    }
+
+    hideActiveGames() {
+        document.getElementById('resumeGameBtn').style.display = 'none';
+        document.getElementById('activeGamesList').style.display = 'none';
+    }
+
+    formatTimeSince(timestamp) {
+        const now = Date.now();
+        const diff = now - timestamp;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        
+        if (days > 0) return `${days}d ago`;
+        if (hours > 0) return `${hours}h ago`;
+        if (minutes > 0) return `${minutes}m ago`;
+        return 'Just now';
+    }
+
+    resumeGame(gameId) {
+        console.log('🎯 resumeGame called with gameId:', gameId);
+        const playerName = document.getElementById('playerNameInput').value.trim();
+        console.log('👤 Player name:', playerName);
+        
+        if (!playerName) {
+            console.log('❌ No player name, showing notification');
+            this.showNotification('Please enter your player name first', 'error');
+            return;
+        }
+        
+        console.log('✅ Setting game ID and joining game');
+        // Set the game ID input and join the game
+        document.getElementById('gameIdInput').value = gameId;
+        console.log('🎮 Game ID set to:', gameId);
+        
+        try {
+            this.joinGame();
+            console.log('🚀 joinGame() called successfully');
+        } catch (error) {
+            console.error('❌ Error calling joinGame():', error);
+        }
+    }
+
+    showActiveGamesList() {
+        const activeGamesList = document.getElementById('activeGamesList');
+        if (activeGamesList.style.display === 'none') {
+            activeGamesList.style.display = 'block';
+        } else {
+            activeGamesList.style.display = 'none';
+        }
+    }
+
     playAgain() {
         // Reset game state
         this.gameState = null;
@@ -1615,6 +1841,12 @@ class PlantsVsZombiesClient {
         // Reset UI
         document.getElementById('startGameBtn').style.display = 'block';
         document.getElementById('pauseGameBtn').style.display = 'none';
+        
+        // Load active games if player name is available
+        const playerName = document.getElementById('playerNameInput').value.trim();
+        if (playerName.length >= 2) {
+            this.loadPlayerActiveGames(playerName);
+        }
         
         this.stopGameLoop();
     }

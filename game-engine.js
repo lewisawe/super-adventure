@@ -340,15 +340,56 @@ class PlantsVsZombiesEngine {
             this.games.set(gameId, gameState);
         }
 
-        if (gameState.status !== 'waiting') {
+        // Check if player is already in the game (resuming)
+        const isRejoining = gameState.players && gameState.players[playerId];
+        
+        if (gameState.status !== 'waiting' && !isRejoining) {
             throw new Error('Game already in progress');
+        }
+
+        // If rejoining, just return the current game state
+        if (isRejoining) {
+            console.log(`🔄 Player ${playerId} rejoining game ${gameId}`);
+            
+            // Ensure wave manager is running for this game
+            if (!this.waveManagers.has(gameId) && gameState.status === 'playing') {
+                console.log(`🌊 Restarting wave manager for rejoined game ${gameId}`);
+                const waveManager = new WaveManager(this, gameState);
+                this.waveManagers.set(gameId, waveManager);
+                
+                // If there was a wave in progress, restart it
+                if (gameState.currentWave > 0) {
+                    waveManager.startWave(gameState.currentWave - 1);
+                }
+            }
+            
+            // Ensure game loop is running for this game
+            if (!this.gameLoops.has(gameId) && gameState.status === 'playing') {
+                console.log(`🔄 Restarting game loop for rejoined game ${gameId}`);
+                const interval = setInterval(async () => {
+                    try {
+                        await this.updateGame(gameId);
+                    } catch (error) {
+                        console.error(`Game loop error for ${gameId}:`, error);
+                    }
+                }, 1000 / this.GAMEPLAY.GAME_SPEED);
+                
+                this.gameLoops.set(gameId, interval);
+            }
+            
+            return {
+                gameId: gameId,
+                playerId: playerId,
+                gameState: gameState,
+                isRejoining: true
+            };
         }
 
         if (Object.keys(gameState.players).length >= GAME_CONFIG.MULTIPLAYER.MAX_PLAYERS_PER_GAME) {
             throw new Error('Game is full');
         }
 
-        // Add player to game
+        // Add new player to game
         gameState.players[playerId] = {
             id: playerId,
             isHost: false,
@@ -370,7 +411,12 @@ class PlantsVsZombiesEngine {
         });
 
         console.log(`👤 ${playerId} joined game: ${gameId}`);
-        return gameState;
+        return {
+            gameId: gameId,
+            playerId: playerId,
+            gameState: gameState,
+            isRejoining: false
+        };
     }
 
     async startGame(gameId, playerId) {
