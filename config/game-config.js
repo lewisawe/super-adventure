@@ -15,7 +15,7 @@ const GAME_CONFIG = {
         SUN_FALL_INTERVAL: 10000,    // 10 seconds
         SUN_FALL_AMOUNT: 25,
         WAVE_DELAY: 30000,           // 30 seconds between waves
-        MAX_WAVES: 10,
+        MAX_WAVES: 15,               // Updated to match new wave count
         ZOMBIE_SPAWN_INTERVAL: 5000, // 5 seconds
         GAME_SPEED: 60               // FPS target
     },
@@ -237,6 +237,136 @@ const GAME_CONFIG = {
             duration: 60000,
             isBossWave: true,
             message: 'BOSS WAVE! A massive zombie approaches!'
+        },
+        { // Wave 6 - Buckethead Introduction
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🧟', count: 3, lanes: 'random' }] },
+                { time: 12000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 1, lanes: 'random' }] },
+                { time: 20000, event: 'spawn', zombies: [{ type: '🧟‍♂️', count: 2, lanes: 'random' }] },
+                { time: 30000, event: 'spawn', zombies: [{ type: '🏃‍♂️', count: 2, lanes: 'random' }] },
+                { time: 40000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 1, lanes: 'random' }] }
+            ],
+            zombiePool: ['🧟', '🧟‍♂️', '🧟‍♀️', '🏃‍♂️'],
+            duration: 50000,
+            message: 'Buckethead zombies! These are heavily armored!'
+        },
+        { // Wave 7 - Pole Vaulter Challenge
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🧟', count: 2, lanes: 'random' }] },
+                { time: 8000, event: 'spawn', zombies: [{ type: '🦘', count: 2, lanes: 'random' }] },
+                { time: 18000, event: 'spawn', zombies: [{ type: '🧟‍♂️', count: 1, lanes: 'random' }] },
+                { time: 25000, event: 'spawn', zombies: [{ type: '🦘', count: 1, lanes: 'random' }] },
+                { time: 35000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 1, lanes: 'random' }] },
+                { time: 42000, event: 'spawn', zombies: [{ type: '🦘', count: 2, lanes: 'random' }] }
+            ],
+            zombiePool: ['🧟', '🧟‍♂️', '🧟‍♀️', '🦘'],
+            duration: 50000,
+            message: 'Pole vaulters can jump over your first plant!'
+        },
+        { // Wave 8 - Air Assault
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🧟', count: 3, lanes: 'random' }] },
+                { time: 10000, event: 'spawn', zombies: [{ type: '🎈', count: 2, lanes: 'random' }] },
+                { time: 20000, event: 'spawn', zombies: [{ type: '🧟‍♂️', count: 2, lanes: 'random' }] },
+                { time: 30000, event: 'spawn', zombies: [{ type: '🎈', count: 3, lanes: 'random' }] },
+                { time: 40000, event: 'spawn', zombies: [{ type: '🏃‍♂️', count: 2, lanes: 'random' }] }
+            ],
+            zombiePool: ['🧟', '🧟‍♂️', '🏃‍♂️', '🎈'],
+            duration: 50000,
+            message: 'Balloon zombies fly overhead! Use cactus plants!'
+        },
+        { // Wave 9 - Mixed Assault
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🧟', count: 4, lanes: 'random' }] },
+                { time: 8000, event: 'spawn', zombies: [{ type: '🦘', count: 1, lanes: 'random' }] },
+                { time: 15000, event: 'horde_start', duration: 18000, spawnRate: 1200 },
+                { time: 35000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 2, lanes: 'random' }] },
+                { time: 45000, event: 'spawn', zombies: [{ type: '🎈', count: 2, lanes: 'random' }] }
+            ],
+            zombiePool: ['🧟', '🧟‍♂️', '🧟‍♀️', '🏃‍♂️', '🦘', '🎈'],
+            duration: 55000,
+            message: 'All zombie types attack together!'
+        },
+        { // Wave 10 - Second Boss Wave
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🧟', count: 5, lanes: 'random' }] },
+                { time: 12000, event: 'spawn', zombies: [{ type: '🧟‍♂️', count: 3, lanes: 'random' }] },
+                { time: 25000, event: 'horde_start', duration: 25000, spawnRate: 700 },
+                { time: 55000, event: 'spawn', zombies: [{ type: '👑', count: 2, lanes: 'outer' }] },
+                { time: 60000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 2, lanes: 'random' }] }
+            ],
+            zombiePool: ['🧟', '🧟‍♂️', '🧟‍♀️', '🏃‍♂️', '👑'],
+            duration: 70000,
+            isBossWave: true,
+            message: 'DOUBLE BOSS WAVE! Two massive zombies approach!'
+        },
+        { // Wave 11 - Speed Rush
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🏃‍♂️', count: 4, lanes: 'random' }] },
+                { time: 8000, event: 'spawn', zombies: [{ type: '🏃‍♂️', count: 3, lanes: 'random' }] },
+                { time: 15000, event: 'spawn', zombies: [{ type: '🧟‍♂️', count: 2, lanes: 'random' }] },
+                { time: 25000, event: 'spawn', zombies: [{ type: '🏃‍♂️', count: 5, lanes: 'random' }] },
+                { time: 35000, event: 'spawn', zombies: [{ type: '🦘', count: 2, lanes: 'random' }] },
+                { time: 45000, event: 'spawn', zombies: [{ type: '🏃‍♂️', count: 3, lanes: 'random' }] }
+            ],
+            zombiePool: ['🏃‍♂️', '🧟‍♂️', '🦘'],
+            duration: 55000,
+            message: 'Speed rush! Fast zombies everywhere!'
+        },
+        { // Wave 12 - Armored Division
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 3, lanes: 'random' }] },
+                { time: 12000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 2, lanes: 'random' }] },
+                { time: 20000, event: 'spawn', zombies: [{ type: '🧟‍♂️', count: 3, lanes: 'random' }] },
+                { time: 30000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 4, lanes: 'random' }] },
+                { time: 42000, event: 'spawn', zombies: [{ type: '👑', count: 1, lanes: 'center' }] },
+                { time: 50000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 2, lanes: 'random' }] }
+            ],
+            zombiePool: ['🧟‍♂️', '🧟‍♀️', '👑'],
+            duration: 60000,
+            message: 'Heavily armored zombies! Bring your strongest plants!'
+        },
+        { // Wave 13 - Chaos Wave
+            timeline: [
+                { time: 0, event: 'horde_start', duration: 30000, spawnRate: 600 },
+                { time: 15000, event: 'spawn', zombies: [{ type: '🎈', count: 3, lanes: 'random' }] },
+                { time: 35000, event: 'spawn', zombies: [{ type: '👑', count: 1, lanes: 'random' }] },
+                { time: 45000, event: 'spawn', zombies: [{ type: '🦘', count: 3, lanes: 'random' }] },
+                { time: 55000, event: 'horde_start', duration: 15000, spawnRate: 500 }
+            ],
+            zombiePool: ['🧟', '🧟‍♂️', '🧟‍♀️', '🏃‍♂️', '🦘', '🎈', '👑'],
+            duration: 70000,
+            message: 'CHAOS! All zombie types in massive numbers!'
+        },
+        { // Wave 14 - Final Preparation
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🧟', count: 6, lanes: 'random' }] },
+                { time: 10000, event: 'spawn', zombies: [{ type: '🧟‍♂️', count: 4, lanes: 'random' }] },
+                { time: 20000, event: 'spawn', zombies: [{ type: '🧟‍♀️', count: 3, lanes: 'random' }] },
+                { time: 30000, event: 'spawn', zombies: [{ type: '🏃‍♂️', count: 4, lanes: 'random' }] },
+                { time: 40000, event: 'spawn', zombies: [{ type: '🦘', count: 3, lanes: 'random' }] },
+                { time: 50000, event: 'spawn', zombies: [{ type: '🎈', count: 4, lanes: 'random' }] },
+                { time: 60000, event: 'spawn', zombies: [{ type: '👑', count: 2, lanes: 'outer' }] }
+            ],
+            zombiePool: ['🧟', '🧟‍♂️', '🧟‍♀️', '🏃‍♂️', '🦘', '🎈', '👑'],
+            duration: 75000,
+            message: 'The final assault begins! Prepare for the ultimate wave!'
+        },
+        { // Wave 15 - FINAL BOSS WAVE
+            timeline: [
+                { time: 0, event: 'spawn', zombies: [{ type: '🧟', count: 8, lanes: 'random' }] },
+                { time: 15000, event: 'horde_start', duration: 40000, spawnRate: 400 },
+                { time: 30000, event: 'spawn', zombies: [{ type: '👑', count: 1, lanes: 'center' }] },
+                { time: 45000, event: 'spawn', zombies: [{ type: '🎈', count: 5, lanes: 'random' }] },
+                { time: 60000, event: 'spawn', zombies: [{ type: '👑', count: 2, lanes: 'outer' }] },
+                { time: 75000, event: 'spawn', zombies: [{ type: '🦘', count: 4, lanes: 'random' }] },
+                { time: 90000, event: 'spawn', zombies: [{ type: '👑', count: 3, lanes: 'all' }] }
+            ],
+            zombiePool: ['🧟', '🧟‍♂️', '🧟‍♀️', '🏃‍♂️', '🦘', '🎈', '👑'],
+            duration: 120000,
+            isBossWave: true,
+            isFinalWave: true,
+            message: 'FINAL WAVE! The zombie apocalypse reaches its peak!'
         }
     ],
 

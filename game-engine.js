@@ -112,20 +112,28 @@ class WaveManager {
     }
 
     selectLane(laneSpec) {
+        const totalLanes = GAME_CONFIG.BOARD.ROWS;
+        
         switch (laneSpec) {
             case 'random':
-                return Math.floor(Math.random() * GAME_CONFIG.BOARD.ROWS);
+                return Math.floor(Math.random() * totalLanes);
             case 'center':
-                return Math.floor(GAME_CONFIG.BOARD.ROWS / 2);
+                return Math.floor(totalLanes / 2);
             case 'top':
                 return 0;
             case 'bottom':
-                return GAME_CONFIG.BOARD.ROWS - 1;
+                return totalLanes - 1;
+            case 'outer':
+                // Return either top or bottom lane
+                return Math.random() < 0.5 ? 0 : totalLanes - 1;
+            case 'all':
+                // Return a random lane (same as random, but semantically different)
+                return Math.floor(Math.random() * totalLanes);
             default:
                 if (Array.isArray(laneSpec)) {
                     return laneSpec[Math.floor(Math.random() * laneSpec.length)];
                 }
-                return Math.floor(Math.random() * GAME_CONFIG.BOARD.ROWS);
+                return Math.floor(Math.random() * totalLanes);
         }
     }
 
@@ -613,21 +621,6 @@ class PlantsVsZombiesEngine {
 
         // Clean up dead entities
         this.cleanupEntities(gameState);
-
-        // Check if wave is complete and set next wave timer
-        if (gameState.waveInProgress && gameState.zombies.length === 0) {
-            gameState.waveInProgress = false;
-            // Give players 20 seconds to prepare for next wave
-            gameState.nextWaveTime = now + 20000;
-            
-            await this.redis.publishGameUpdate(gameId, 'wave_completed', {
-                completedWave: gameState.currentWave,
-                nextWaveIn: 20,
-                message: `Wave ${gameState.currentWave} completed! Next wave in 20 seconds...`
-            });
-            
-            console.log(`🌊 Wave ${gameState.currentWave} completed. Next wave in 20 seconds.`);
-        }
 
         // Check win/lose conditions
         this.checkGameEnd(gameState);
