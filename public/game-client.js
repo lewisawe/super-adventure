@@ -653,15 +653,58 @@ class PlantsVsZombiesClient {
     updateGameBoard() {
         if (!this.gameState) return;
         
-        // Clear existing entities
-        document.querySelectorAll('.plant, .zombie, .projectile').forEach(el => el.remove());
+        // Update plants (don't clear and redraw)
+        this.updatePlants();
         
-        // Render plants
-        if (this.gameState.plants) {
-            this.gameState.plants.forEach(plant => {
-                this.renderPlant(plant);
-            });
+        // Update zombies (clear and redraw for position updates)
+        this.updateZombies();
+        
+        // Update projectiles (clear and redraw for position updates)
+        this.updateProjectiles();
+        
+        // Update lawn mowers
+        if (this.gameState.lawnMowers) {
+            this.updateLawnMowers();
         }
+    }
+
+    updatePlants() {
+        if (!this.gameState.plants) return;
+        
+        // Get existing plant elements
+        const existingPlants = new Map();
+        document.querySelectorAll('.plant[data-plant-id]').forEach(el => {
+            existingPlants.set(el.dataset.plantId, el);
+        });
+        
+        // Track which plants are still active
+        const activePlantIds = new Set();
+        
+        // Update or create plants
+        this.gameState.plants.forEach(plant => {
+            activePlantIds.add(plant.id);
+            const existingElement = existingPlants.get(plant.id);
+            
+            if (existingElement) {
+                // Update existing plant (health bar, effects, etc.)
+                this.updatePlantElement(existingElement, plant);
+            } else {
+                // Create new plant
+                this.renderPlant(plant);
+            }
+        });
+        
+        // Remove plants that no longer exist
+        existingPlants.forEach((element, plantId) => {
+            if (!activePlantIds.has(plantId)) {
+                element.remove();
+            }
+        });
+    }
+
+    updateZombies() {
+        // Clear existing zombies (they move frequently, so redraw is acceptable)
+        document.querySelectorAll('.zombie').forEach(el => el.remove());
         
         // Render zombies
         if (this.gameState.zombies) {
@@ -669,6 +712,11 @@ class PlantsVsZombiesClient {
                 this.renderZombie(zombie);
             });
         }
+    }
+
+    updateProjectiles() {
+        // Clear existing projectiles (they move frequently, so redraw is acceptable)
+        document.querySelectorAll('.projectile').forEach(el => el.remove());
         
         // Render projectiles
         if (this.gameState.projectiles) {
@@ -676,10 +724,75 @@ class PlantsVsZombiesClient {
                 this.renderProjectile(projectile);
             });
         }
+    }
+
+    updatePlantElement(element, plant) {
+        // Update health bar if needed
+        const existingHealthBar = element.querySelector('.health-bar');
+        const needsHealthBar = plant.health < plant.maxHealth;
+        const wasDamaged = element.classList.contains('damaged');
         
-        // Update lawn mowers
-        if (this.gameState.lawnMowers) {
-            this.updateLawnMowers();
+        if (needsHealthBar && !existingHealthBar) {
+            // Add health bar
+            const healthBar = this.createHealthBar(plant.health, plant.maxHealth);
+            element.appendChild(healthBar);
+            element.classList.add('damaged');
+            
+            // Only trigger shake animation if plant wasn't already damaged
+            if (!wasDamaged) {
+                element.style.animation = 'plantShake 0.5s ease-in-out';
+                setTimeout(() => {
+                    // Reset animation to allow for sunflower sway if needed
+                    if (plant.type === '🌻') {
+                        element.style.animation = 'sunflowerSway 3s ease-in-out infinite';
+                    } else {
+                        element.style.animation = '';
+                    }
+                }, 500);
+            }
+        } else if (needsHealthBar && existingHealthBar) {
+            // Update existing health bar
+            const healthFill = existingHealthBar.querySelector('.health-fill');
+            if (healthFill) {
+                const healthPercent = (plant.health / plant.maxHealth) * 100;
+                healthFill.style.width = `${healthPercent}%`;
+                
+                // Update health bar color based on health percentage
+                if (healthPercent > 60) {
+                    healthFill.style.backgroundColor = '#4CAF50'; // Green
+                } else if (healthPercent > 30) {
+                    healthFill.style.backgroundColor = '#FF9800'; // Orange
+                } else {
+                    healthFill.style.backgroundColor = '#F44336'; // Red
+                }
+            }
+        } else if (!needsHealthBar && existingHealthBar) {
+            // Remove health bar (plant healed to full)
+            existingHealthBar.remove();
+            element.classList.remove('damaged');
+            
+            // Reset animation for sunflowers
+            if (plant.type === '🌻') {
+                element.style.animation = 'sunflowerSway 3s ease-in-out infinite';
+            } else {
+                element.style.animation = '';
+            }
+        }
+        
+        // Ensure plant-specific classes are maintained
+        if (plant.type === '🌻' && !element.classList.contains('sunflower')) {
+            element.classList.add('sunflower');
+        }
+        
+        // Update plant visual effects based on any status effects
+        if (plant.effects) {
+            plant.effects.forEach(effect => {
+                if (effect.type === 'boost' && !element.classList.contains('boosted')) {
+                    element.classList.add('boosted');
+                } else if (effect.type === 'shield' && !element.classList.contains('shielded')) {
+                    element.classList.add('shielded');
+                }
+            });
         }
     }
 
